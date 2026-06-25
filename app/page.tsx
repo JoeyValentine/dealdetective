@@ -3,12 +3,13 @@
 import { useState, useMemo } from "react";
 import { getActiveDeals, getTop10Deals, getEvergreenDeals, getDashboardStats } from "@/lib/mockData";
 import { rankDeals, searchDeals } from "@/lib/ranker";
-import { Category } from "@/types/deal";
+import { Category, Deal } from "@/types/deal";
 import DealCard from "@/components/DealCard";
 import TopSteals from "@/components/TopSteals";
 import CategoryTabs from "@/components/CategoryTabs";
 import SearchBar from "@/components/SearchBar";
 import StatsBar from "@/components/StatsBar";
+import GmailConnect from "@/components/GmailConnect";
 import { Bell, Radar, ChevronDown, ChevronUp, Package } from "lucide-react";
 
 export default function Home() {
@@ -17,9 +18,19 @@ export default function Home() {
   const [showExpiring, setShowExpiring] = useState(true);
   const [showEvergreen, setShowEvergreen] = useState(false);
   const [minDiscount, setMinDiscount] = useState(0);
+  const [realDeals, setRealDeals] = useState<Deal[]>([]);
 
-  const allActive = getActiveDeals();
-  const top10 = getTop10Deals();
+  // Merge real (Gmail-parsed) deals with mock data; real deals take precedence
+  const allActive = useMemo(
+    () => realDeals.length > 0 ? [...realDeals, ...getActiveDeals()] : getActiveDeals(),
+    [realDeals]
+  );
+  const top10 = useMemo(
+    () => allActive.filter((d) => d.urgency !== "evergreen" && d.expirationStatus !== "expired")
+      .sort((a, b) => b.effectiveDiscountPercent - a.effectiveDiscountPercent)
+      .slice(0, 10),
+    [allActive]
+  );
   const evergreen = getEvergreenDeals();
   const stats = getDashboardStats();
 
@@ -79,10 +90,7 @@ export default function Home() {
                 </span>
               )}
             </button>
-            <div className="hidden sm:flex items-center gap-1.5 bg-[#F2F2F7] rounded-full px-3 py-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[11px] text-[#6C6C70] font-medium">Read-only</span>
-            </div>
+            <GmailConnect onSyncComplete={setRealDeals} />
           </div>
         </div>
       </header>

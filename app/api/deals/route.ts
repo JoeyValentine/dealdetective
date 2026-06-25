@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mockDeals, getActiveDeals, getTop10Deals, getDashboardStats } from "@/lib/mockData";
+import { getActiveDeals, getTop10Deals, getDashboardStats } from "@/lib/mockData";
 import { searchDeals, rankDeals } from "@/lib/ranker";
+import { getRealDeals } from "@/lib/dealStore";
 import { Category } from "@/types/deal";
 
 export async function GET(req: NextRequest) {
@@ -11,11 +12,17 @@ export async function GET(req: NextRequest) {
   const minDiscount = parseInt(searchParams.get("minDiscount") || "0");
   const includeExpired = searchParams.get("includeExpired") === "true";
 
+  const realDeals = getRealDeals();
+  // When real deals exist, surface them first alongside mock data
+  const activeDeals = realDeals.length > 0
+    ? [...realDeals, ...getActiveDeals()]
+    : getActiveDeals();
+
   let deals = view === "top10"
-    ? getTop10Deals()
+    ? activeDeals.sort((a, b) => b.effectiveDiscountPercent - a.effectiveDiscountPercent).slice(0, 10)
     : view === "stats"
     ? []
-    : getActiveDeals();
+    : activeDeals;
 
   if (view === "stats") {
     return NextResponse.json(getDashboardStats());

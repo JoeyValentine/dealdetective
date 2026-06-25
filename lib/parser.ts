@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Deal, Category, OfferType, DealColor, ConfidenceScore } from "@/types/deal";
-import { v4 as uuidv4 } from "crypto";
 
 const client = new Anthropic();
 
