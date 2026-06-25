@@ -81,7 +81,8 @@ Return ONLY a valid JSON array, no other text.`;
   if (content.type !== "text") return [];
 
   try {
-    const parsed = JSON.parse(content.text);
+    const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
 
     return parsed.map((raw: Record<string, unknown>) => {
