@@ -6,7 +6,8 @@ import { addSubscriptions, getSubscriptions, getSubscriptionCount } from "@/lib/
 
 export async function POST() {
   const session = await auth();
-  if (!session?.accessToken) {
+  const userId = session?.user?.email;
+  if (!session?.accessToken || !userId) {
     return NextResponse.json({ error: "Not authenticated with Gmail" }, { status: 401 });
   }
 
@@ -21,14 +22,14 @@ export async function POST() {
       );
       for (const r of results) {
         if (r.status === "fulfilled" && r.value.length > 0) {
-          addSubscriptions(r.value);
+          addSubscriptions(userId, r.value);
           newSubs += r.value.length;
         }
       }
     }
 
-    const totalStored = getSubscriptionCount();
-    console.log(`[/api/gmail/subscriptions] scanned=${emails.length} newSubs=${newSubs} storeSize=${totalStored}`);
+    const totalStored = getSubscriptionCount(userId);
+    console.log(`[/api/gmail/subscriptions] user=${userId} scanned=${emails.length} newSubs=${newSubs} storeSize=${totalStored}`);
     return NextResponse.json({ scanned: emails.length, newSubs, totalStored });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Subscription scan failed";
@@ -37,6 +38,10 @@ export async function POST() {
 }
 
 export async function GET() {
-  const subs = getSubscriptions();
+  const session = await auth();
+  const userId = session?.user?.email;
+  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const subs = getSubscriptions(userId);
   return NextResponse.json({ subscriptions: subs, count: subs.length });
 }

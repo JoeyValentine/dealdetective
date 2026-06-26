@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { getRealDeals, getStoreCount } from "@/lib/dealStore";
+import { auth } from "@/lib/auth";
+import { getRealDeals } from "@/lib/dealStore";
 
 export async function GET() {
-  const deals = getRealDeals();
-  console.log("[/api/gmail/deals] returning", deals.length, "real deals from store");
+  const session = await auth();
+  const userId = session?.user?.email;
+  if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const deals = getRealDeals(userId);
   return NextResponse.json({ deals, count: deals.length });
 }

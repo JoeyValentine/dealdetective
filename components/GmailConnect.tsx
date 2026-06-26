@@ -132,7 +132,10 @@ export default function GmailConnect({ onSyncComplete, onSubscriptionSyncComplet
       )}
 
       <button
-        onClick={() => signOut()}
+        onClick={async () => {
+          await fetch("/api/gmail/sync", { method: "DELETE" });
+          signOut();
+        }}
         className="p-1.5 text-[var(--text-3)] hover:text-[var(--text-2)] rounded-lg hover:bg-[var(--surface)] transition-colors"
         title="Disconnect Gmail"
       >
