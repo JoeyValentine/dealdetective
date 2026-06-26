@@ -142,6 +142,7 @@ export async function fetchPromoEmails(
         receivedAt: new Date(parseInt(msg.internalDate)).toISOString(),
         senderEmail,
         senderDomain,
+        messageId: msg.id,
       });
     }
   }

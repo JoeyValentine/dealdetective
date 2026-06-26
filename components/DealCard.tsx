@@ -3,7 +3,7 @@
 import { Deal } from "@/types/deal";
 import ExpiryBadge from "./ExpiryBadge";
 import ConfidenceBadge from "./ConfidenceBadge";
-import { Copy, Check, AlertTriangle, ImageIcon } from "lucide-react";
+import { Copy, Check, AlertTriangle, ImageIcon, ExternalLink } from "lucide-react";
 import { useState } from "react";
 
 const DEAL_COLORS: Record<
@@ -126,6 +126,9 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
 
       {!compact && (
         <>
+          {deal.notes && deal.notes !== "No expiry detected" && (
+            <p className="text-xs text-[#6C6C70] mb-2 leading-relaxed italic">{deal.notes}</p>
+          )}
           {deal.restrictions && (
             <p className="text-xs text-[#6C6C70] mb-2.5 leading-relaxed">{deal.restrictions}</p>
           )}
@@ -147,8 +150,21 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
         )}
       </div>
 
-      {/* Category label */}
-      <p className="text-xs text-[#AEAEB2] mt-2">{deal.category}</p>
+      {/* Category + Gmail link */}
+      <div className="flex items-center justify-between mt-2">
+        <p className="text-xs text-[#AEAEB2]">{deal.category}</p>
+        {deal.sourceEmail.messageId && (
+          <a
+            href={`https://mail.google.com/mail/u/0/#inbox/${deal.sourceEmail.messageId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-[#AEAEB2] hover:text-amber-500 transition-colors"
+          >
+            <ExternalLink size={10} />
+            Gmail
+          </a>
+        )}
+      </div>
     </div>
   );
 }

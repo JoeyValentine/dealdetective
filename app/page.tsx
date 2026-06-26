@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { getDashboardStats } from "@/lib/mockData";
 import { rankDeals, searchDeals } from "@/lib/ranker";
 import { Category, Deal } from "@/types/deal";
 import DealCard from "@/components/DealCard";
@@ -22,6 +21,21 @@ export default function Home() {
 
   const allActive = useMemo(() => realDeals, [realDeals]);
 
+  const stats = useMemo(() => {
+    const cats = new Set(realDeals.map((d) => d.category));
+    const estimatedSavings = realDeals.reduce((sum, d) => {
+      if (d.discountUnit === "percent") return sum + d.discountValue * 5;
+      if (d.discountUnit === "dollars") return sum + d.discountValue;
+      return sum + 25;
+    }, 0);
+    return {
+      totalActive: realDeals.length,
+      expiringToday: realDeals.filter((d) => d.urgency === "urgent").length,
+      categoriesCount: cats.size,
+      estimatedSavings: Math.round(estimatedSavings),
+    };
+  }, [realDeals]);
+
   const top10 = useMemo(
     () => allActive
       .filter((d) => d.urgency !== "evergreen" && d.expirationStatus !== "expired")
@@ -34,8 +48,6 @@ export default function Home() {
     () => allActive.filter((d) => d.urgency === "evergreen"),
     [allActive]
   );
-
-  const stats = getDashboardStats();
 
   const expiringDeals = useMemo(
     () => allActive.filter((d) => d.urgency === "urgent"),

@@ -19,9 +19,7 @@ function formatDiscount(deal: Deal): string {
   if (deal.offerType === "bogo") return "BOGO";
   if (deal.offerType === "free_shipping") return "Free Ship";
   if (deal.offerType === "freebie") return "FREE";
-  if (deal.discountUnit === "percent") return `${deal.discountValue}%`;
-  if (deal.discountUnit === "dollars") return `$${deal.discountValue}`;
-  return "Deal";
+  return `${deal.effectiveDiscountPercent}%`;
 }
 
 function StealCard({ deal, rank }: { deal: Deal; rank: number }) {

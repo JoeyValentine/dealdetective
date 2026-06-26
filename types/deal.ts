@@ -54,6 +54,7 @@ export interface Deal {
     subject: string;
     receivedAt: string;
     senderDomain?: string;
+    messageId?: string;
   };
   status: DealStatus;
   qualityScore: number;
