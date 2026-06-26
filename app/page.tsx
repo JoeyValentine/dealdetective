@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { getActiveDeals, getEvergreenDeals, getDashboardStats } from "@/lib/mockData";
+import { useState, useMemo } from "react";
+import { getDashboardStats } from "@/lib/mockData";
 import { rankDeals, searchDeals } from "@/lib/ranker";
 import { Category, Deal } from "@/types/deal";
 import DealCard from "@/components/DealCard";
@@ -20,14 +20,7 @@ export default function Home() {
   const [minDiscount, setMinDiscount] = useState(0);
   const [realDeals, setRealDeals] = useState<Deal[]>([]);
 
-  // Merge real (Gmail-parsed) deals with mock data; once real deals exist, show them first
-  const allActive = useMemo(() => {
-    const result = realDeals.length > 0
-      ? [...realDeals, ...getActiveDeals()]
-      : getActiveDeals();
-    console.log("[page] allActive computed:", result.length, "deals (realDeals:", realDeals.length, ")");
-    return result;
-  }, [realDeals]);
+  const allActive = useMemo(() => realDeals, [realDeals]);
 
   const top10 = useMemo(
     () => allActive
@@ -37,20 +30,12 @@ export default function Home() {
     [allActive]
   );
 
-  // Include real evergreen deals — getEvergreenDeals() only has mock data
   const evergreen = useMemo(
     () => allActive.filter((d) => d.urgency === "evergreen"),
     [allActive]
   );
 
   const stats = getDashboardStats();
-
-  useEffect(() => {
-    console.log("[page] realDeals state updated:", realDeals.length, "deals");
-    if (realDeals.length > 0) {
-      console.log("[page] first 3 realDeals:", realDeals.slice(0, 3).map(d => ({ id: d.id, retailer: d.retailer, urgency: d.urgency })));
-    }
-  }, [realDeals]);
 
   const expiringDeals = useMemo(
     () => allActive.filter((d) => d.urgency === "urgent"),
@@ -241,10 +226,10 @@ export default function Home() {
           <span>DealDetective — Read-only. No emails modified. No codes auto-applied.</span>
           {realDeals.length > 0 ? (
             <span className="text-emerald-500 font-medium">
-              Showing {realDeals.length} real deals from Gmail + {getActiveDeals().length} mock
+              {realDeals.length} deals from Gmail
             </span>
           ) : (
-            <span className="text-amber-500 font-medium">Showing mock data — connect Gmail to load real deals</span>
+            <span className="text-amber-500 font-medium">Connect Gmail to load deals</span>
           )}
         </div>
       </footer>

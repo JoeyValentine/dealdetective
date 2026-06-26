@@ -95,7 +95,7 @@ Return ONLY a valid JSON array, no other text.`;
 
       const expirationDate = (raw.expirationDate as string | null) || null;
       let expirationStatus: Deal["expirationStatus"] = "no_expiry";
-      let urgency: Deal["urgency"] = "evergreen";
+      let urgency: Deal["urgency"] = "normal";
 
       if (expirationDate) {
         const now = new Date();
