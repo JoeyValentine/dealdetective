@@ -81,6 +81,72 @@ async function gmailGet<T>(path: string, token: string): Promise<T> {
   return res.json();
 }
 
+const BILLING_QUERY = "subject:(invoice OR receipt OR billing OR subscription OR renewal OR payment OR statement)";
+
+export async function fetchBillingEmails(
+  accessToken: string,
+  maxFetch = 1000
+): Promise<RawEmail[]> {
+  // 1. List message IDs matching billing subjects across all mail
+  const list = await gmailGet<{ messages?: { id: string }[] }>(
+    `/users/me/messages?q=${encodeURIComponent(BILLING_QUERY)}&maxResults=${maxFetch}`,
+    accessToken
+  );
+  const ids = list.messages ?? [];
+
+  // 2. Fetch metadata in batches of 20
+  const META_BATCH = 20;
+  const metas: GmailMeta[] = [];
+  for (let i = 0; i < ids.length; i += META_BATCH) {
+    const batch = ids.slice(i, i + META_BATCH);
+    const results = await Promise.allSettled(
+      batch.map((m) =>
+        gmailGet<GmailMeta>(
+          `/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+          accessToken
+        )
+      )
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled") metas.push(r.value);
+    }
+  }
+
+  // 3. Fetch full bodies in batches of 10
+  const FULL_BATCH = 10;
+  const emails: RawEmail[] = [];
+  for (let i = 0; i < metas.length; i += FULL_BATCH) {
+    const batch = metas.slice(i, i + FULL_BATCH);
+    const results = await Promise.allSettled(
+      batch.map((m) =>
+        gmailGet<GmailFull>(`/users/me/messages/${m.id}?format=full`, accessToken)
+      )
+    );
+    for (const r of results) {
+      if (r.status !== "fulfilled") continue;
+      const msg = r.value;
+      const subject = header(msg.payload.headers, "Subject");
+      const from = header(msg.payload.headers, "From");
+      const body = extractBody(msg.payload);
+      if (!body.trim()) continue;
+
+      const senderEmail = from.match(/<([^>]+)>/)?.[1] ?? from;
+      const senderDomain = senderEmail.split("@")[1] ?? "";
+
+      emails.push({
+        subject,
+        body: body.slice(0, 8000),
+        receivedAt: new Date(parseInt(msg.internalDate)).toISOString(),
+        senderEmail,
+        senderDomain,
+        messageId: msg.id,
+      });
+    }
+  }
+
+  return emails;
+}
+
 export async function fetchPromoEmails(
   accessToken: string,
   maxFetch = 500

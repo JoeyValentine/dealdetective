@@ -3,18 +3,20 @@
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useState, useRef, useEffect } from "react";
 import { Deal } from "@/types/deal";
-import { Mail, LogOut, RefreshCw, CheckCircle, AlertCircle, Loader } from "lucide-react";
+import { Subscription } from "@/types/subscription";
+import { Mail, LogOut, RefreshCw, AlertCircle, Loader } from "lucide-react";
 
 interface Props {
   onSyncComplete: (deals: Deal[]) => void;
+  onSubscriptionSyncComplete?: (subs: Subscription[]) => void;
 }
 
 type ScanState = "idle" | "scanning" | "done" | "error";
 
-export default function GmailConnect({ onSyncComplete }: Props) {
+export default function GmailConnect({ onSyncComplete, onSubscriptionSyncComplete }: Props) {
   const { data: session, status } = useSession();
   const [scanState, setScanState] = useState<ScanState>("idle");
-  const [scanResult, setScanResult] = useState<{ scanned: number; newDeals: number } | null>(null);
+  const [scanResult, setScanResult] = useState<{ deals: number; subs: number; emails: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -26,34 +28,50 @@ export default function GmailConnect({ onSyncComplete }: Props) {
   function stopTimer() {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
-
   useEffect(() => () => stopTimer(), []);
 
   function formatElapsed(s: number): string {
-    if (s < 60) return `${s}s`;
-    return `${Math.floor(s / 60)}m ${s % 60}s`;
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
   }
 
   const handleScan = async () => {
     setScanState("scanning");
     setErrorMsg("");
     startTimer();
+
     try {
-      const res = await fetch("/api/gmail/sync", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Sync failed");
+      // Run both scans in parallel
+      const [dealSync, subSync] = await Promise.allSettled([
+        fetch("/api/gmail/sync", { method: "POST" }).then((r) => r.json()),
+        fetch("/api/gmail/subscriptions", { method: "POST" }).then((r) => r.json()),
+      ]);
 
-      setScanResult({ scanned: data.scanned, newDeals: data.newDeals });
+      const dealData = dealSync.status === "fulfilled" ? dealSync.value : { scanned: 0, newDeals: 0 };
+      const subData  = subSync.status  === "fulfilled" ? subSync.value  : { scanned: 0, newSubs: 0 };
 
-      const dealsRes = await fetch("/api/gmail/deals");
-      const dealsData = await dealsRes.json();
+      // Fetch stored results for both
+      const [dealsRes, subsRes] = await Promise.allSettled([
+        fetch("/api/gmail/deals").then((r) => r.json()),
+        fetch("/api/gmail/subscriptions").then((r) => r.json()),
+      ]);
 
       stopTimer();
       setScanState("done");
-      onSyncComplete(dealsData.deals ?? []);
+
+      const deals = dealsRes.status === "fulfilled" ? (dealsRes.value.deals ?? []) : [];
+      const subs  = subsRes.status  === "fulfilled" ? (subsRes.value.subscriptions ?? []) : [];
+
+      setScanResult({
+        deals: deals.length,
+        subs: subs.length,
+        emails: (dealData.scanned ?? 0) + (subData.scanned ?? 0),
+      });
+
+      onSyncComplete(deals);
+      onSubscriptionSyncComplete?.(subs);
     } catch (err) {
       stopTimer();
-      setErrorMsg(err instanceof Error ? err.message : "Sync failed");
+      setErrorMsg(err instanceof Error ? err.message : "Scan failed");
       setScanState("error");
     }
   };
@@ -80,7 +98,7 @@ export default function GmailConnect({ onSyncComplete }: Props) {
             <Loader size={13} className="animate-spin text-amber-500 shrink-0" />
             <span className="hidden sm:inline">Scanning… {formatElapsed(elapsed)}</span>
           </div>
-          <span className="text-xs text-[var(--text-3)] hidden sm:inline">Est. ~2–3 min</span>
+          <span className="text-xs text-[var(--text-3)] hidden sm:inline">Deals + Bills · Est. 3–5 min</span>
           <div className="relative w-32 h-1 bg-[var(--surface)] rounded-full overflow-hidden hidden sm:block">
             <div className="scanning-bar rounded-full" />
           </div>
@@ -89,7 +107,7 @@ export default function GmailConnect({ onSyncComplete }: Props) {
 
       {scanState === "done" && scanResult && (
         <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium hidden sm:inline">
-          {scanResult.newDeals} deal{scanResult.newDeals !== 1 ? "s" : ""} from {scanResult.scanned} emails
+          {scanResult.deals} deals · {scanResult.subs} subs
         </span>
       )}
 
