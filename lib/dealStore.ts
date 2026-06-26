@@ -1,7 +1,10 @@
 import { Deal } from "@/types/deal";
 
-// ponytail: global in-memory store, resets on server restart — add DB when persistence matters
-const store = new Map<string, Deal>();
+// ponytail: anchored to globalThis so Turbopack module reloads don't reset it
+// resets on server process restart — add DB when persistence matters
+const g = globalThis as typeof globalThis & { __dealStore?: Map<string, Deal> };
+if (!g.__dealStore) g.__dealStore = new Map<string, Deal>();
+const store = g.__dealStore;
 
 function dedupKey(d: Deal): string {
   return `${d.retailerNormalized}:${d.promoCode ?? ""}:${d.discountValue}:${d.offerType}`;
