@@ -63,7 +63,9 @@ Extract each distinct offer as a separate object. For each deal, return:
   "notes": "Specific product names and offer details — e.g. '$1.29 off any size Premium Roast or Iced Coffee, app orders only' or 'Buy one get one free on all organic salads'. Do NOT just repeat the discount amount; include WHAT the deal applies to.",
   "brands": array of brand names featured in the deal (empty array if none),
   "codeInImage": boolean,
-  "isEvergreen": boolean — true ONLY when the email explicitly says the offer never expires, is always available, or is ongoing (e.g. "no expiration date", "always available", "ongoing offer"). Set false when the expiry is simply not mentioned.
+  "isEvergreen": boolean — true ONLY when the email explicitly says the offer never expires, is always available, or is ongoing (e.g. "no expiration date", "always available", "ongoing offer"). Set false when the expiry is simply not mentioned,
+  "isRepeatable": boolean — true when the deal can be used more than once (daily, weekly, monthly, ongoing),
+  "repeatFrequency": string or null — only when explicitly stated: "1x only", "daily", "weekly", "monthly", "3x", etc. null if not mentioned
 }
 
 Rules:
@@ -157,6 +159,8 @@ Return ONLY a valid JSON array, no other text.`;
         notes: (raw.notes as string) || "",
         brands: (raw.brands as string[]) || [],
         codeInImage: (raw.codeInImage as boolean) || false,
+        isRepeatable: raw.isRepeatable === true,
+        repeatFrequency: (raw.repeatFrequency as string | null) || null,
       } satisfies Deal;
     });
   } catch {

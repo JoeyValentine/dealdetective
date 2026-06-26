@@ -12,17 +12,17 @@ export default function ConfidenceBadge({ score }: ConfidenceBadgeProps) {
     high: {
       label: "Verified",
       icon: ShieldCheck,
-      className: "text-emerald-600 bg-emerald-50",
+      className: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30",
     },
     medium: {
       label: "Verify at checkout",
       icon: ShieldAlert,
-      className: "text-amber-600 bg-amber-50",
+      className: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30",
     },
     low: {
       label: "Unverified",
       icon: ShieldOff,
-      className: "text-red-500 bg-red-50",
+      className: "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30",
     },
   };
 

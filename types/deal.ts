@@ -62,6 +62,8 @@ export interface Deal {
   notes: string;
   codeInImage?: boolean;
   brands?: string[];
+  isRepeatable?: boolean;
+  repeatFrequency?: string | null; // e.g. "1x only", "daily", "weekly", "monthly"
 }
 
 export interface SearchResult {

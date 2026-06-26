@@ -37,7 +37,6 @@ interface CategoryTabsProps {
 }
 
 export default function CategoryTabs({ active, onChange, counts }: CategoryTabsProps) {
-  // Only show categories that have at least one deal; always show "All"
   const visibleCategories = ALL_CATEGORIES.filter(
     (cat) => cat === "All" || (counts?.[cat] ?? 0) > 0
   );
@@ -55,7 +54,7 @@ export default function CategoryTabs({ active, onChange, counts }: CategoryTabsP
               flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-200
               ${isActive
                 ? "bg-amber-500 text-white shadow-[0_2px_10px_rgba(245,158,11,0.35)]"
-                : "bg-white text-[#6C6C70] shadow-[0_1px_4px_rgba(0,0,0,0.07)] hover:text-[#1C1C1E] hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
+                : "bg-[var(--card)] text-[var(--text-2)] shadow-[0_1px_4px_rgba(0,0,0,0.07)] hover:text-[var(--text-1)] hover:shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
               }
             `}
           >
@@ -66,7 +65,7 @@ export default function CategoryTabs({ active, onChange, counts }: CategoryTabsP
             {count !== undefined && (
               <span
                 className={`text-xs rounded-full px-1.5 leading-none py-0.5 ${
-                  isActive ? "bg-white/20 text-white" : "bg-[#F2F2F7] text-[#AEAEB2]"
+                  isActive ? "bg-white/20 text-white" : "bg-[var(--surface)] text-[var(--text-3)]"
                 }`}
               >
                 {count}
