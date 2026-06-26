@@ -27,11 +27,8 @@ export default function GmailConnect({ onSyncComplete }: Props) {
 
       setScanResult({ scanned: data.scanned, newDeals: data.newDeals });
       setScanState("done");
-
-      // Fetch updated deal list and bubble up
-      const dealsRes = await fetch("/api/deals");
-      const dealsData = await dealsRes.json();
-      onSyncComplete(dealsData.deals ?? []);
+      // Pass only real deals — page.tsx merges with mock data
+      onSyncComplete(data.deals ?? []);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Sync failed");
       setScanState("error");

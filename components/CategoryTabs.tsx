@@ -37,9 +37,14 @@ interface CategoryTabsProps {
 }
 
 export default function CategoryTabs({ active, onChange, counts }: CategoryTabsProps) {
+  // Only show categories that have at least one deal; always show "All"
+  const visibleCategories = ALL_CATEGORIES.filter(
+    (cat) => cat === "All" || (counts?.[cat] ?? 0) > 0
+  );
+
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-      {ALL_CATEGORIES.map((cat) => {
+      {visibleCategories.map((cat) => {
         const count = counts?.[cat];
         const isActive = cat === active;
         return (

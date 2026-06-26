@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchPromoEmails } from "@/lib/gmailFetcher";
 import { parseEmailWithClaude } from "@/lib/parser";
-import { addDeals, getStoreCount } from "@/lib/dealStore";
+import { addDeals, getStoreCount, getRealDeals } from "@/lib/dealStore";
 
 export async function POST() {
   const session = await auth();
@@ -33,6 +33,7 @@ export async function POST() {
       scanned: emails.length,
       newDeals,
       totalStored: getStoreCount(),
+      deals: getRealDeals(),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";

@@ -36,17 +36,17 @@ export default function Home() {
 
   const expiringDeals = useMemo(
     () => allActive.filter((d) => d.urgency === "urgent"),
-    []
+    [allActive]
   );
 
   const categoryCounts = useMemo(() => {
     const counts: Partial<Record<Category | "All", number>> = {};
-    counts["All"] = allActive.length;
-    allActive.forEach((d) => {
+    counts["All"] = allActive.filter((d) => d.urgency !== "evergreen").length;
+    allActive.filter((d) => d.urgency !== "evergreen").forEach((d) => {
       counts[d.category] = (counts[d.category] || 0) + 1;
     });
     return counts;
-  }, []);
+  }, [allActive]);
 
   const filteredDeals = useMemo(() => {
     let deals = allActive.filter((d) => d.urgency !== "evergreen");
@@ -54,7 +54,7 @@ export default function Home() {
     if (searchQuery) deals = searchDeals(deals, searchQuery);
     if (minDiscount > 0) deals = deals.filter((d) => d.effectiveDiscountPercent >= minDiscount);
     return rankDeals(deals);
-  }, [activeCategory, searchQuery, minDiscount]);
+  }, [allActive, activeCategory, searchQuery, minDiscount]);
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
