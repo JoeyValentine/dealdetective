@@ -21,15 +21,25 @@ export default function GmailConnect({ onSyncComplete }: Props) {
     setScanState("scanning");
     setErrorMsg("");
     try {
+      // Step 1: run the scan
       const res = await fetch("/api/gmail/sync", { method: "POST" });
       const data = await res.json();
+      console.log("[GmailConnect] sync response:", data);
       if (!res.ok) throw new Error(data.error ?? "Sync failed");
 
       setScanResult({ scanned: data.scanned, newDeals: data.newDeals });
+
+      // Step 2: fetch the actual deals from the store (separate endpoint avoids huge inline payload)
+      const dealsRes = await fetch("/api/gmail/deals");
+      const dealsData = await dealsRes.json();
+      console.log("[GmailConnect] fetched", dealsData.count, "real deals from store");
+      console.log("[GmailConnect] first 5 deals:", dealsData.deals?.slice(0, 5));
+
       setScanState("done");
-      // Pass only real deals — page.tsx merges with mock data
-      onSyncComplete(data.deals ?? []);
+      onSyncComplete(dealsData.deals ?? []);
+      console.log("[GmailConnect] called onSyncComplete with", (dealsData.deals ?? []).length, "deals");
     } catch (err) {
+      console.error("[GmailConnect] scan error:", err);
       setErrorMsg(err instanceof Error ? err.message : "Sync failed");
       setScanState("error");
     }

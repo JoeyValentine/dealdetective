@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchPromoEmails } from "@/lib/gmailFetcher";
 import { parseEmailWithClaude } from "@/lib/parser";
-import { addDeals, getStoreCount, getRealDeals } from "@/lib/dealStore";
+import { addDeals, getStoreCount } from "@/lib/dealStore";
 
 export async function POST() {
   const session = await auth();
@@ -29,12 +29,9 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({
-      scanned: emails.length,
-      newDeals,
-      totalStored: getStoreCount(),
-      deals: getRealDeals(),
-    });
+    const totalStored = getStoreCount();
+    console.log(`[/api/gmail/sync] scanned=${emails.length} newDeals=${newDeals} storeSize=${totalStored}`);
+    return NextResponse.json({ scanned: emails.length, newDeals, totalStored });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: message }, { status: 500 });
