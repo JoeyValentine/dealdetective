@@ -35,6 +35,7 @@ export async function POST() {
       let totalScanned = 0;
       let totalDeals = 0;
       let pageToken: string | undefined;
+      let fastBatchDone = false;
 
       try {
         while (totalScanned < MAX_EMAILS) {
@@ -47,23 +48,44 @@ export async function POST() {
               return PROMO_KEYWORDS.some((k) => text.includes(k));
             });
 
-            const batchDeals: Deal[] = [];
-            for (let i = 0; i < filtered.length; i += BATCH * PARALLEL) {
-              const group: Promise<Deal[]>[] = [];
-              for (let j = 0; j < PARALLEL; j++) {
-                const slice = filtered.slice(i + j * BATCH, i + (j + 1) * BATCH);
-                if (slice.length > 0) group.push(parseEmailsBatchWithClaude(slice));
+            if (filtered.length > 0) {
+              // Fast first batch: pull the first 10 emails (2 parallel Claude calls of 5)
+              // and stream them immediately so deals appear on screen within ~15s.
+              if (!fastBatchDone) {
+                fastBatchDone = true;
+                const fast = filtered.splice(0, BATCH * 2);
+                const fastDeals = (
+                  await Promise.allSettled(
+                    [fast.slice(0, BATCH), fast.slice(BATCH)]
+                      .filter((s) => s.length > 0)
+                      .map(parseEmailsBatchWithClaude)
+                  )
+                ).flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+                if (fastDeals.length > 0) {
+                  addDeals(userId, fastDeals);
+                  totalDeals += fastDeals.length;
+                  write({ type: "deals", deals: fastDeals, totalFound: totalDeals, scanned: totalScanned });
+                }
               }
-              const results = await Promise.allSettled(group);
-              for (const r of results) {
-                if (r.status === "fulfilled") batchDeals.push(...r.value);
-              }
-            }
 
-            if (batchDeals.length > 0) {
-              addDeals(userId, batchDeals);
-              totalDeals += batchDeals.length;
-              write({ type: "deals", deals: batchDeals, totalFound: totalDeals, scanned: totalScanned });
+              // Remaining emails: normal groups of PARALLEL batches
+              const batchDeals: Deal[] = [];
+              for (let i = 0; i < filtered.length; i += BATCH * PARALLEL) {
+                const group: Promise<Deal[]>[] = [];
+                for (let j = 0; j < PARALLEL; j++) {
+                  const slice = filtered.slice(i + j * BATCH, i + (j + 1) * BATCH);
+                  if (slice.length > 0) group.push(parseEmailsBatchWithClaude(slice));
+                }
+                const results = await Promise.allSettled(group);
+                for (const r of results) {
+                  if (r.status === "fulfilled") batchDeals.push(...r.value);
+                }
+              }
+              if (batchDeals.length > 0) {
+                addDeals(userId, batchDeals);
+                totalDeals += batchDeals.length;
+                write({ type: "deals", deals: batchDeals, totalFound: totalDeals, scanned: totalScanned });
+              }
             } else {
               write({ type: "progress", scanned: totalScanned, totalFound: totalDeals });
             }
