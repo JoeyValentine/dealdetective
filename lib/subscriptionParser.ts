@@ -29,7 +29,12 @@ function computeNextBillingDate(
   }
 }
 
+const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment'];
+
 export async function parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]> {
+  const emailText = (email.subject + ' ' + email.body).toLowerCase();
+  if (ONE_TIME_PATTERNS.some((p) => emailText.includes(p))) return [];
+
   const prompt = `You are a subscription and billing email parser. Extract recurring payment/subscription info.
 
 Email Subject: ${email.subject}
@@ -77,7 +82,7 @@ Return ONLY a valid JSON array, no other text.`;
 
     return parsed
       .filter((raw: Record<string, unknown>) =>
-        raw.serviceName && typeof raw.amount === "number" && (raw.amount as number) > 0
+        raw.serviceName && typeof raw.amount === "number" && (raw.amount as number) > 0 && (raw.amount as number) <= 5000
       )
       .map((raw: Record<string, unknown>) => {
         const serviceName = (raw.serviceName as string) || "Unknown";

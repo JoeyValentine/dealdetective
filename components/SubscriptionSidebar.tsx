@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { Subscription, SubscriptionCategory, SubscriptionFrequency } from "@/types/subscription";
-import { ExternalLink, ShieldCheck, ShieldAlert, ShieldOff, CreditCard, TrendingUp, Lock } from "lucide-react";
+import { ExternalLink, ShieldCheck, ShieldAlert, ShieldOff, CreditCard, TrendingUp, Lock, AlertTriangle } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -175,6 +175,18 @@ export default function SubscriptionSidebar({ subscriptions }: Props) {
     [active]
   );
 
+  const BILLING_ALERT_KEYWORDS = ['failed payment', 'payment failed', 'payment declined', 'update required', 'past due', 'overdue', 'expires soon', 'card expired'];
+
+  const alerts = useMemo(
+    () => subscriptions.flatMap((s) => {
+      const text = (s.notes + ' ' + s.sourceEmail.subject).toLowerCase();
+      const matched = BILLING_ALERT_KEYWORDS.find((k) => text.includes(k));
+      return matched ? [{ sub: s, message: matched }] : [];
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subscriptions]
+  );
+
   const isEmpty = subscriptions.length === 0;
 
   return (
@@ -201,6 +213,26 @@ export default function SubscriptionSidebar({ subscriptions }: Props) {
           </div>
         ) : (
           <>
+            {/* ── Important Alerts ── */}
+            {alerts.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle size={12} className="text-red-500" />
+                  <p className="text-xs font-semibold text-red-500 uppercase tracking-wide">Important Alerts</p>
+                  <span className="ml-0.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">{alerts.length}</span>
+                </div>
+                {alerts.map(({ sub, message }) => (
+                  <div key={sub.id} className="rounded-2xl px-3.5 py-3 bg-red-50 dark:bg-red-900/15 border border-red-200/60 dark:border-red-700/30 flex items-start gap-2.5">
+                    <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--text-1)] truncate">{sub.serviceName}</p>
+                      <p className="text-xs text-red-500 capitalize mt-0.5">{message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* ── Hero stat ── */}
             <div
               className="rounded-[20px] p-4"

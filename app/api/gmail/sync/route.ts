@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchPromoEmails } from "@/lib/gmailFetcher";
-import { parseEmailWithClaude } from "@/lib/parser";
+import { parseEmailsBatchWithClaude } from "@/lib/parser";
 import { addDeals, getStoreCount, clearStore } from "@/lib/dealStore";
 import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+const PROMO_KEYWORDS = ['%', 'off', 'deal', 'sale', 'promo', 'code', 'coupon', 'discount', 'free', 'bogo', 'save', 'offer', 'expires', 'limited'];
 
 export async function POST() {
   const session = await auth();
@@ -19,23 +21,29 @@ export async function POST() {
   try {
     const emails = await fetchPromoEmails(session.accessToken);
 
+    // Pre-filter: skip emails with no deal-related keywords in subject or snippet
+    const filtered = emails.filter((e) => {
+      const text = (e.subject + " " + e.body.slice(0, 500)).toLowerCase();
+      return PROMO_KEYWORDS.some((k) => text.includes(k));
+    });
+
     let newDeals = 0;
     const BATCH = 5;
-    for (let i = 0; i < emails.length; i += BATCH) {
-      const results = await Promise.allSettled(
-        emails.slice(i, i + BATCH).map((email) => parseEmailWithClaude(email))
-      );
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value.length > 0) {
-          addDeals(userId, r.value);
-          newDeals += r.value.length;
+    for (let i = 0; i < filtered.length; i += BATCH) {
+      try {
+        const deals = await parseEmailsBatchWithClaude(filtered.slice(i, i + BATCH));
+        if (deals.length > 0) {
+          addDeals(userId, deals);
+          newDeals += deals.length;
         }
+      } catch {
+        // skip failed batch, continue with the rest
       }
     }
 
     const totalStored = getStoreCount(userId);
-    console.log(`[/api/gmail/sync] user=${userId} scanned=${emails.length} newDeals=${newDeals} storeSize=${totalStored}`);
-    return NextResponse.json({ scanned: emails.length, newDeals, totalStored });
+    console.log(`[/api/gmail/sync] user=${userId} scanned=${emails.length} filtered=${filtered.length} newDeals=${newDeals} storeSize=${totalStored}`);
+    return NextResponse.json({ scanned: emails.length, filtered: filtered.length, newDeals, totalStored });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
     return NextResponse.json({ error: message }, { status: 500 });

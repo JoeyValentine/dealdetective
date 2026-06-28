@@ -13,7 +13,7 @@ import GmailConnect from "@/components/GmailConnect";
 import ThemeToggle from "@/components/ThemeToggle";
 import Confetti from "@/components/Confetti";
 import SubscriptionSidebar from "@/components/SubscriptionSidebar";
-import { Bell, Radar, ChevronDown, ChevronUp, Package, Sparkles, CreditCard } from "lucide-react";
+import { Bell, Radar, ChevronDown, ChevronUp, Package, Sparkles, CreditCard, AlertTriangle } from "lucide-react";
 
 type MobileTab = "deals" | "bills";
 
@@ -27,6 +27,7 @@ export default function Home() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [confettiMsgs, setConfettiMsgs] = useState<string[] | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("deals");
+  const [showBellDropdown, setShowBellDropdown] = useState(false);
 
   const handleSyncComplete = useCallback((deals: Deal[]) => {
     setRealDeals(deals);
@@ -82,6 +83,33 @@ export default function Home() {
   const evergreen = useMemo(() => allActive.filter((d) => d.urgency === "evergreen"), [allActive]);
   const expiringDeals = useMemo(() => allActive.filter((d) => d.urgency === "urgent"), [allActive]);
 
+  const billingAlerts = useMemo(() => {
+    const ALERT_KEYWORDS = ['failed payment', 'payment failed', 'payment declined', 'update required', 'past due', 'overdue', 'expires soon', 'card expired'];
+    return subscriptions.filter((s) => {
+      const text = (s.notes + ' ' + s.sourceEmail.subject).toLowerCase();
+      return ALERT_KEYWORDS.some((k) => text.includes(k));
+    });
+  }, [subscriptions]);
+
+  const bellCount = expiringDeals.length + billingAlerts.length;
+
+  const bellItems = useMemo(() => {
+    type BellItem = { label: string; sub: string; type: 'deal' | 'alert'; sectionId: string };
+    const items: BellItem[] = [];
+    for (const d of expiringDeals.slice(0, 3)) {
+      items.push({
+        label: d.retailer,
+        sub: `${d.discountValue}${d.discountUnit === 'percent' ? '%' : '$'} off — expiring soon`,
+        type: 'deal',
+        sectionId: 'expiring-soon',
+      });
+    }
+    for (const s of billingAlerts.slice(0, 2)) {
+      items.push({ label: s.serviceName, sub: s.notes || 'Billing alert', type: 'alert', sectionId: 'bills' });
+    }
+    return items.slice(0, 5);
+  }, [expiringDeals, billingAlerts]);
+
   const categoryCounts = useMemo(() => {
     const counts: Partial<Record<Category | "All", number>> = {};
     const feed = allActive.filter((d) => d.urgency !== "evergreen");
@@ -106,6 +134,7 @@ export default function Home() {
 
       {expiringDeals.length > 0 && (
         <div
+          id="expiring-soon"
           className="bg-[var(--card)] rounded-[20px] overflow-hidden"
           style={{ boxShadow: "0 2px 12px rgba(239,68,68,0.08)" }}
         >
@@ -226,14 +255,61 @@ export default function Home() {
 
         <div className="flex items-center gap-2 shrink-0">
           <ThemeToggle />
-          <button className="relative p-2 bg-[var(--surface)] rounded-xl hover:opacity-80 transition-opacity">
-            <Bell size={15} className="text-[var(--text-2)]" />
-            {expiringDeals.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
-                {expiringDeals.length}
-              </span>
+          <div className="relative">
+            <button
+              onClick={() => setShowBellDropdown((v) => !v)}
+              className="relative p-2 bg-[var(--surface)] rounded-xl hover:opacity-80 transition-opacity"
+            >
+              <Bell size={15} className="text-[var(--text-2)]" />
+              {bellCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+                  {bellCount}
+                </span>
+              )}
+            </button>
+            {showBellDropdown && (
+              <>
+                <div className="fixed inset-0 z-[41]" onClick={() => setShowBellDropdown(false)} />
+                <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--card)] rounded-2xl shadow-xl border border-[var(--border)] z-[42] overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[var(--border)]">
+                    <p className="text-sm font-semibold text-[var(--text-1)]">Notifications</p>
+                  </div>
+                  {bellItems.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-[var(--text-3)]">No urgent items</div>
+                  ) : (
+                    <div className="py-1">
+                      {bellItems.map((item, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setShowBellDropdown(false);
+                            if (item.type === 'alert' && window.innerWidth < 1024) {
+                              setMobileTab('bills');
+                              setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
+                            } else if (item.type === 'deal' && window.innerWidth < 1024) {
+                              setMobileTab('deals');
+                              setTimeout(() => document.getElementById('expiring-soon')?.scrollIntoView({ behavior: 'smooth' }), 50);
+                            } else {
+                              document.getElementById(item.sectionId)?.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors flex items-start gap-3"
+                        >
+                          <span className={`mt-0.5 shrink-0 ${item.type === 'alert' ? 'text-red-500' : 'text-amber-500'}`}>
+                            {item.type === 'alert' ? <AlertTriangle size={14} /> : <Bell size={14} />}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-[var(--text-1)] truncate">{item.label}</p>
+                            <p className="text-xs text-[var(--text-3)] truncate mt-0.5">{item.sub}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
-          </button>
+          </div>
           <GmailConnect
             onSyncComplete={handleSyncComplete}
             onSubscriptionSyncComplete={handleSubscriptionSyncComplete}
@@ -257,6 +333,7 @@ export default function Home() {
       <div className="hidden lg:flex max-w-[1600px] mx-auto">
         {/* Left sidebar */}
         <aside
+          id="bills"
           className="w-[300px] xl:w-[320px] shrink-0 border-r border-[var(--border)] sticky top-[57px] overflow-y-auto scrollbar-hide"
           style={{ height: "calc(100vh - 57px)" }}
         >
