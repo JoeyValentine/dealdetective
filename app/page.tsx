@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { rankDeals, searchDeals } from "@/lib/ranker";
 import { Category, Deal } from "@/types/deal";
 import { Subscription } from "@/types/subscription";
@@ -16,6 +16,7 @@ import SubscriptionSidebar from "@/components/SubscriptionSidebar";
 import { Bell, Radar, ChevronDown, ChevronUp, Package, Sparkles, CreditCard, AlertTriangle } from "lucide-react";
 
 type MobileTab = "deals" | "bills";
+type ScanState = "idle" | "scanning" | "done" | "error";
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<Category | "All">("All");
@@ -29,14 +30,81 @@ export default function Home() {
   const [mobileTab, setMobileTab] = useState<MobileTab>("deals");
   const [showBellDropdown, setShowBellDropdown] = useState(false);
 
-  const handleSyncComplete = useCallback((deals: Deal[]) => {
-    setRealDeals(deals);
+  const [scanState, setScanState] = useState<ScanState>("idle");
+  const [scanResult, setScanResult] = useState<{ deals: number; subs: number; emails: number } | null>(null);
+  const [foundCount, setFoundCount] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = useCallback(() => {
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
   }, []);
 
-  const handleSubscriptionSyncComplete = useCallback((subs: Subscription[]) => {
-    setSubscriptions(subs);
-    // Fire confetti once we have both results (deals already set via handleSyncComplete)
-    setRealDeals((prev) => {
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }, []);
+
+  useEffect(() => () => stopTimer(), [stopTimer]);
+
+  const handleScan = useCallback(async () => {
+    setScanState("scanning");
+    setFoundCount(0);
+    setErrorMsg("");
+    startTimer();
+
+    try {
+      const dealFetchPromise = fetch("/api/gmail/sync", { method: "POST" });
+      const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
+        .then((r) => r.json())
+        .catch(() => null);
+
+      const dealRes = await dealFetchPromise;
+      if (!dealRes.ok) {
+        const err = await dealRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `Sync failed: ${dealRes.status}`);
+      }
+
+      const accumulated: Deal[] = [];
+      let scannedCount = 0;
+
+      if (dealRes.body) {
+        const reader = dealRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const chunk = JSON.parse(line) as { type: string; deals?: Deal[]; scanned?: number };
+              if (chunk.type === "deals" && Array.isArray(chunk.deals)) {
+                accumulated.push(...chunk.deals);
+                setFoundCount(accumulated.length);
+                setRealDeals([...accumulated]);
+              } else if (chunk.type === "done") {
+                scannedCount = chunk.scanned ?? 0;
+              }
+            } catch { /* skip malformed line */ }
+          }
+        }
+      }
+
+      await subSyncPromise;
+      const subsRes = await fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] }));
+      const subs: Subscription[] = subsRes.subscriptions ?? [];
+
+      stopTimer();
+      setScanState("done");
+      setScanResult({ deals: accumulated.length, subs: subs.length, emails: scannedCount });
+      setRealDeals([...accumulated]);
+      setSubscriptions(subs);
+
       const monthlyTotal = subs
         .filter((s) => s.status !== "cancelled")
         .reduce((sum, s) => {
@@ -45,15 +113,16 @@ export default function Home() {
             : s.amount;
           return sum + mo;
         }, 0);
-
       const msgs: string[] = [];
-      if (prev.length > 0) msgs.push(`${prev.length} deals found — you're saving smart! 🎟️`);
+      if (accumulated.length > 0) msgs.push(`${accumulated.length} deals found — you're saving smart! 🎟️`);
       if (subs.length > 0) msgs.push(`Found ${subs.length} subscriptions — $${monthlyTotal.toFixed(2)}/month in recurring charges 💰`);
       if (msgs.length > 0) setConfettiMsgs(msgs);
-
-      return prev;
-    });
-  }, []);
+    } catch (err) {
+      stopTimer();
+      setErrorMsg(err instanceof Error ? err.message : "Scan failed");
+      setScanState("error");
+    }
+  }, [startTimer, stopTimer]);
 
   const allActive = useMemo(() => realDeals, [realDeals]);
 
@@ -148,7 +217,7 @@ export default function Home() {
       <p className="text-[var(--text-2)] max-w-sm mx-auto leading-relaxed mb-8">
         DealDetective scans your Promotions inbox and surfaces every discount, promo code, and flash sale — ranked by urgency and value.
       </p>
-      <GmailConnect large onSyncComplete={handleSyncComplete} onSubscriptionSyncComplete={handleSubscriptionSyncComplete} />
+      <GmailConnect large scanState={scanState} onScan={handleScan} foundCount={foundCount} elapsed={elapsed} scanResult={scanResult} errorMsg={errorMsg} />
       <div className="mt-10 flex items-center gap-6 text-xs text-[var(--text-3)]">
         <span>✓ Read-only access</span>
         <span>✓ No emails modified</span>
@@ -342,8 +411,12 @@ export default function Home() {
             )}
           </div>
           <GmailConnect
-            onSyncComplete={handleSyncComplete}
-            onSubscriptionSyncComplete={handleSubscriptionSyncComplete}
+            scanState={scanState}
+            onScan={handleScan}
+            foundCount={foundCount}
+            elapsed={elapsed}
+            scanResult={scanResult}
+            errorMsg={errorMsg}
           />
         </div>
       </div>
