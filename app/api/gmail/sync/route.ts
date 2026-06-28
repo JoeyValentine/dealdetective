@@ -5,6 +5,9 @@ import { parseEmailWithClaude } from "@/lib/parser";
 import { addDeals, getStoreCount, clearStore } from "@/lib/dealStore";
 import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 
+export const runtime = 'nodejs';
+export const maxDuration = 300;
+
 export async function POST() {
   const session = await auth();
   const userId = session?.user?.email;
