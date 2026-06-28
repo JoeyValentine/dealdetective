@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchPromoEmails } from "@/lib/gmailFetcher";
 import { parseEmailsBatchWithClaude } from "@/lib/parser";
+import type { Deal } from "@/types/deal";
 import { addDeals, getStoreCount, clearStore } from "@/lib/dealStore";
 import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 
@@ -19,7 +20,7 @@ export async function POST() {
   }
 
   try {
-    const emails = await fetchPromoEmails(session.accessToken);
+    const emails = await fetchPromoEmails(session.accessToken, 100);
 
     // Pre-filter: skip emails with no deal-related keywords in subject or snippet
     const filtered = emails.filter((e) => {
@@ -28,16 +29,21 @@ export async function POST() {
     });
 
     let newDeals = 0;
-    const BATCH = 5;
-    for (let i = 0; i < filtered.length; i += BATCH) {
-      try {
-        const deals = await parseEmailsBatchWithClaude(filtered.slice(i, i + BATCH));
-        if (deals.length > 0) {
-          addDeals(userId, deals);
-          newDeals += deals.length;
+    const BATCH = 5;     // emails per Claude call
+    const PARALLEL = 4;  // concurrent Claude calls per group
+
+    for (let i = 0; i < filtered.length; i += BATCH * PARALLEL) {
+      const group: Promise<Deal[]>[] = [];
+      for (let j = 0; j < PARALLEL; j++) {
+        const slice = filtered.slice(i + j * BATCH, i + (j + 1) * BATCH);
+        if (slice.length > 0) group.push(parseEmailsBatchWithClaude(slice));
+      }
+      const results = await Promise.allSettled(group);
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value.length > 0) {
+          addDeals(userId, r.value);
+          newDeals += r.value.length;
         }
-      } catch {
-        // skip failed batch, continue with the rest
       }
     }
 
