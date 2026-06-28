@@ -94,7 +94,8 @@ export default function Home() {
   const bellCount = expiringDeals.length + billingAlerts.length;
 
   const bellItems = useMemo(() => {
-    type BellItem = { label: string; sub: string; type: 'deal' | 'alert'; sectionId: string };
+    type BellItem = { label: string; sub: string; type: 'deal' | 'alert'; sectionId: string; gmailUrl?: string };
+    const gmailLink = (msgId?: string) => msgId ? `https://mail.google.com/mail/u/0/#inbox/${msgId}` : undefined;
     const items: BellItem[] = [];
     for (const d of expiringDeals.slice(0, 3)) {
       items.push({
@@ -102,10 +103,17 @@ export default function Home() {
         sub: `${d.discountValue}${d.discountUnit === 'percent' ? '%' : '$'} off — expiring soon`,
         type: 'deal',
         sectionId: 'expiring-soon',
+        gmailUrl: gmailLink(d.sourceEmail.messageId),
       });
     }
     for (const s of billingAlerts.slice(0, 2)) {
-      items.push({ label: s.serviceName, sub: s.notes || 'Billing alert', type: 'alert', sectionId: 'bills' });
+      items.push({
+        label: s.serviceName,
+        sub: s.notes || 'Billing alert',
+        type: 'alert',
+        sectionId: 'bills',
+        gmailUrl: gmailLink(s.sourceEmail.messageId),
+      });
     }
     return items.slice(0, 5);
   }, [expiringDeals, billingAlerts]);
@@ -127,6 +135,27 @@ export default function Home() {
   }, [allActive, activeCategory, searchQuery, minDiscount]);
 
   // ── Shared render pieces ──────────────────────────────────────────────────
+
+  const HeroEmpty = (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 py-16">
+      <div
+        className="w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-[28px] flex items-center justify-center mx-auto mb-6"
+        style={{ boxShadow: "0 8px 32px rgba(245,158,11,0.15)" }}
+      >
+        <Radar size={44} className="text-amber-500" />
+      </div>
+      <h2 className="text-3xl font-bold text-[var(--text-1)] mb-3">Connect Gmail to unlock your deals</h2>
+      <p className="text-[var(--text-2)] max-w-sm mx-auto leading-relaxed mb-8">
+        DealDetective scans your Promotions inbox and surfaces every discount, promo code, and flash sale — ranked by urgency and value.
+      </p>
+      <GmailConnect large onSyncComplete={handleSyncComplete} onSubscriptionSyncComplete={handleSubscriptionSyncComplete} />
+      <div className="mt-10 flex items-center gap-6 text-xs text-[var(--text-3)]">
+        <span>✓ Read-only access</span>
+        <span>✓ No emails modified</span>
+        <span>✓ No codes auto-applied</span>
+      </div>
+    </div>
+  );
 
   const DealsContent = (
     <div className="space-y-7">
@@ -283,7 +312,9 @@ export default function Home() {
                           key={i}
                           onClick={() => {
                             setShowBellDropdown(false);
-                            if (item.type === 'alert' && window.innerWidth < 1024) {
+                            if (item.gmailUrl) {
+                              window.open(item.gmailUrl, '_blank', 'noopener,noreferrer');
+                            } else if (item.type === 'alert' && window.innerWidth < 1024) {
                               setMobileTab('bills');
                               setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 50);
                             } else if (item.type === 'deal' && window.innerWidth < 1024) {
@@ -342,14 +373,14 @@ export default function Home() {
 
         {/* Right main content */}
         <main className="flex-1 min-w-0 px-6 py-6">
-          {DealsContent}
+          {realDeals.length === 0 ? HeroEmpty : DealsContent}
         </main>
       </div>
 
       {/* ── Mobile: tab-based layout ── */}
       <div className="lg:hidden pb-20">
         {mobileTab === "deals" && (
-          <div className="px-4 py-5">{DealsContent}</div>
+          <div className="px-4 py-5">{realDeals.length === 0 ? HeroEmpty : DealsContent}</div>
         )}
         {mobileTab === "bills" && (
           <div className="h-[calc(100vh-57px-64px)] overflow-y-auto">

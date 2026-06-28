@@ -29,11 +29,16 @@ function computeNextBillingDate(
   }
 }
 
-const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment'];
+const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment', 'application fee', 'deposit', 'semester', 'financial aid'];
+const EDU_KEYWORDS = ['university', 'college', 'school', 'institute'];
 
 export async function parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]> {
   const emailText = (email.subject + ' ' + email.body).toLowerCase();
   if (ONE_TIME_PATTERNS.some((p) => emailText.includes(p))) return [];
+
+  // Skip educational institution emails (.edu domains or institution name in domain)
+  const domain = (email.senderDomain || '').toLowerCase();
+  if (domain.endsWith('.edu') || EDU_KEYWORDS.some((k) => domain.includes(k))) return [];
 
   const prompt = `You are a subscription and billing email parser. Extract recurring payment/subscription info.
 
@@ -81,9 +86,13 @@ Return ONLY a valid JSON array, no other text.`;
     if (!Array.isArray(parsed)) return [];
 
     return parsed
-      .filter((raw: Record<string, unknown>) =>
-        raw.serviceName && typeof raw.amount === "number" && (raw.amount as number) > 0 && (raw.amount as number) <= 5000
-      )
+      .filter((raw: Record<string, unknown>) => {
+        if (!raw.serviceName || typeof raw.amount !== "number") return false;
+        if ((raw.amount as number) <= 0 || (raw.amount as number) > 2000) return false;
+        const name = (raw.serviceName as string).toLowerCase();
+        if (EDU_KEYWORDS.some((k) => name.includes(k))) return false;
+        return true;
+      })
       .map((raw: Record<string, unknown>) => {
         const serviceName = (raw.serviceName as string) || "Unknown";
         const frequency = (raw.frequency as SubscriptionFrequency) || "unknown";
