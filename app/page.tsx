@@ -144,7 +144,7 @@ export default function Home() {
   const top10 = useMemo(
     () => allActive
       .filter((d) => d.urgency !== "evergreen" && d.expirationStatus !== "expired")
-      .sort((a, b) => b.effectiveDiscountPercent - a.effectiveDiscountPercent)
+      .sort((a, b) => b.qualityScore - a.qualityScore)
       .slice(0, 10),
     [allActive]
   );

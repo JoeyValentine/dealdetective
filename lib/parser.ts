@@ -72,10 +72,16 @@ function mapRawToDeal(raw: Record<string, unknown>, email: RawEmail): Deal {
   }
 
   const confidence = (raw.confidenceScore as ConfidenceScore) || "medium";
-  const qualityScore =
-    confidence === "high" ? 80 + Math.floor(Math.random() * 20) :
-    confidence === "medium" ? 55 + Math.floor(Math.random() * 20) :
-    30 + Math.floor(Math.random() * 25);
+  const promoCode = (raw.promoCode as string | null) || null;
+  const brands = (raw.brands as string[]) || [];
+
+  let qualityScore = 1;
+  qualityScore += Math.min(5, Math.floor(effectivePct / 10));
+  if (urgency === "urgent") qualityScore += 1;
+  if (promoCode) qualityScore += 1;
+  if (brands.length > 0) qualityScore += 1;
+  if (confidence === "high") qualityScore += 1;
+  qualityScore = Math.min(10, qualityScore);
 
   return {
     id: generateId(),
@@ -86,7 +92,7 @@ function mapRawToDeal(raw: Record<string, unknown>, email: RawEmail): Deal {
     dealColor: color,
     discountValue,
     discountUnit: discountUnit as Deal["discountUnit"],
-    promoCode: (raw.promoCode as string | null) || null,
+    promoCode,
     minimumSpend,
     restrictions: (raw.restrictions as string | null) || null,
     expirationDate,
@@ -103,7 +109,7 @@ function mapRawToDeal(raw: Record<string, unknown>, email: RawEmail): Deal {
     qualityScore,
     effectiveDiscountPercent: effectivePct,
     notes: (raw.notes as string) || "",
-    brands: (raw.brands as string[]) || [],
+    brands,
     codeInImage: (raw.codeInImage as boolean) || false,
     isRepeatable: raw.isRepeatable === true,
     repeatFrequency: (raw.repeatFrequency as string | null) || null,

@@ -17,8 +17,8 @@ export function rankDeals(deals: Deal[]): Deal[] {
     const bExp = b.expirationDate ? new Date(b.expirationDate).getTime() : Infinity;
     if (aExp !== bExp) return aExp - bExp;
 
-    // Break ties by effective discount percent (highest first)
-    return b.effectiveDiscountPercent - a.effectiveDiscountPercent;
+    // Break ties by quality score (highest first)
+    return b.qualityScore - a.qualityScore;
   });
 }
 

@@ -10,8 +10,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const PROMO_KEYWORDS = ['%', 'off', 'deal', 'sale', 'promo', 'code', 'coupon', 'discount', 'free', 'bogo', 'save', 'offer', 'expires', 'limited'];
-const MAX_EMAILS = 200;
-const MAX_DEALS = 60;
+const MAX_EMAILS = 300;
 const BATCH = 5;
 const PARALLEL = 4;
 
@@ -38,7 +37,7 @@ export async function POST() {
       let pageToken: string | undefined;
 
       try {
-        while (totalScanned < MAX_EMAILS && totalDeals < MAX_DEALS) {
+        while (totalScanned < MAX_EMAILS) {
           const { emails, nextPageToken, count } = await fetchPromoEmailsPage(accessToken, pageToken);
           totalScanned += count;
 

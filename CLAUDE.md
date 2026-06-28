@@ -52,7 +52,7 @@ lib/
   auth.ts                   — next-auth config: Google provider, gmail.readonly scope, accessToken in JWT
   parser.ts                 — parseEmailWithClaude() + computeEffectivePercent()
   subscriptionParser.ts     — parseSubscriptionWithClaude() + computeNextBillingDate()
-  gmailFetcher.ts           — fetchPromoEmails() + fetchBillingEmails()
+  gmailFetcher.ts           — fetchPromoEmailsPage() (paginated, 25/page) + fetchPromoEmails() (legacy) + fetchBillingEmails()
   dealStore.ts              — globalThis singleton Map<string, Deal>
   subscriptionStore.ts      — globalThis singleton Map<string, Subscription>
   ranker.ts                 — rankDeals(), searchDeals(), getExpiryCountdown()
@@ -63,10 +63,10 @@ types/
   subscription.ts           — Subscription, SubscriptionFrequency, SubscriptionCategory, etc.
 
 components/
-  DealCard.tsx              — Card rendering a single deal; gradient bg; repeat badge; Gmail link
-  TopSteals.tsx             — Horizontal top-10 strip sorted by effectiveDiscountPercent
-  SubscriptionSidebar.tsx   — Subscription panel: hero stat, analytics, upcoming, active, cancelled
-  GmailConnect.tsx          — OAuth connect button + parallel scan trigger + elapsed timer
+  DealCard.tsx              — Card rendering a single deal; gradient bg; repeat badge; copy code button; quality score badge; Gmail link
+  TopSteals.tsx             — Horizontal top-10 strip sorted by qualityScore
+  SubscriptionSidebar.tsx   — Subscription panel: hero stat, analytics, upcoming, active, cancelled; clickable deduplicated alerts
+  GmailConnect.tsx          — Stateless display component; receives scanState/foundCount/elapsed/scanResult/onScan as props from page.tsx
   ThemeToggle.tsx           — Sun/Moon toggle; reads/writes localStorage + html.dark class
   Confetti.tsx              — Money emoji rain; accepts messages[] array, cycles with 2s gap
   CategoryTabs.tsx          — Pill tabs for category filtering with counts
@@ -100,7 +100,7 @@ interface Deal {
   confidenceScore: "high" | "medium" | "low"
   sourceEmail: { subject: string; receivedAt: string; senderDomain?: string; messageId?: string }
   status: "active" | "used" | "archived"
-  qualityScore: number                // 0-100
+  qualityScore: number                // 1-10: 1 base + min(5,floor(effectivePct/10)) + urgent(1) + promoCode(1) + brands(1) + highConfidence(1)
   effectiveDiscountPercent: number    // normalized % for ranking
   notes: string                       // specific product/offer details extracted by Claude
   brands?: string[]
@@ -165,12 +165,21 @@ Key prompt rules: never fabricate; resolve relative dates to absolute ISO using 
 ### `parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]>` (`lib/subscriptionParser.ts`)
 Returns `[]` for non-billing emails and for $0 free trials. Only marks `status: "cancelled"` on explicit cancellation confirmations. `nextBillingDate` computed in code (not by Claude): monthly=+1mo, annual=+1yr, weekly=+7d, unknown=null.
 
+**Inflation filters (layered):**
+- Pre-filter: `ONE_TIME_PATTERNS` in email text → return `[]`
+- Pre-filter: `.edu` domain or `EDU_KEYWORDS` (`university`, `college`, `school`, `institute`, `enrollment`, `tuition`) in sender domain → return `[]`
+- Prompt instruction: use `frequency: "unknown"` unless billing cycle is explicitly stated
+- Post-filter: `amount > 2000` → skip; `frequency === "unknown" && amount > 500` → skip; `EDU_KEYWORDS` in serviceName → skip
+
 ---
 
 ## Gmail Fetcher (`lib/gmailFetcher.ts`)
 
 ```ts
-// Deals scan — category:promotions, max 500 emails
+// Paginated promo scan — used by streaming sync route
+fetchPromoEmailsPage(accessToken, pageToken?, pageSize=25): Promise<{ emails, nextPageToken?, count }>
+
+// Legacy full-fetch (kept for backward compat)
 fetchPromoEmails(accessToken: string, maxFetch?: number): Promise<RawEmail[]>
 
 // Bills scan — subject keyword filter, max 1000 emails
@@ -178,7 +187,7 @@ const BILLING_QUERY = "subject:(invoice OR receipt OR billing OR subscription OR
 fetchBillingEmails(accessToken: string, maxFetch?: number): Promise<RawEmail[]>
 ```
 
-Both add `messageId` to each email for Gmail deep-link construction.
+All add `messageId` to each email for Gmail deep-link construction. `fetchPromoEmailsPage` applies `PROMO_RE` subject filter before fetching full bodies.
 
 ---
 
@@ -200,7 +209,7 @@ Required because Turbopack hot-reloads modules between requests in dev, resettin
 ## API Routes
 
 ### `POST /api/gmail/sync`
-Fetch promo emails from Gmail, parse with Claude, store in dealStore. Returns `{ scanned, newDeals, totalStored }`.
+Streams NDJSON via `ReadableStream`. Fetches up to 300 emails in pages of 25, applies keyword pre-filter, runs 5-email Claude batches in groups of 4 parallel. Sends `{ type: "deals", deals, totalFound, scanned }` chunks as they arrive, followed by `{ type: "done", ... }`. No deal count cap — processes all emails up to 300.
 
 ### `GET /api/gmail/deals`
 Return all deals from dealStore. Returns `{ deals: Deal[], count }`.
@@ -237,7 +246,9 @@ Returns `{ deals: Deal[], count }`. Returns `503` if `ANTHROPIC_API_KEY` missing
 1. `evergreen` sinks to bottom.
 2. `urgent` floats to top.
 3. Among same urgency: soonest expiry first.
-4. Tie-break: highest `effectiveDiscountPercent`.
+4. Tie-break: highest `qualityScore`.
+
+Top 10 Steals (in `page.tsx`) sorted by `qualityScore` descending.
 
 `searchDeals()` matches against: retailer, retailerNormalized, category, promoCode, notes, brands, offerType.
 
@@ -304,11 +315,15 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 ### Done
 - Full Deal + Subscription type systems.
 - Claude-powered parsers for both deal emails and billing emails.
-- Real Gmail ingestion via OAuth — both promo and billing passes.
-- Two-panel dashboard with full dark mode, confetti, scan progress.
-- Subscriptions sidebar: Rocket Money-style recurring charge tracker.
+- Real Gmail streaming ingestion — promo scan streams NDJSON, deals appear in the feed as they parse. Up to 300 emails, 4 parallel Claude batches of 5.
+- Two-panel dashboard with full dark mode, confetti, live scan counter.
+- Subscriptions sidebar: Rocket Money-style recurring charge tracker with clickable deduplicated billing alerts.
+- Copy code button on every promo code pill.
+- Quality score badge (1-10) on each deal card; deals sorted by quality score.
+- Subscription inflation filters: EDU domain/name detection, $2000 hard cap, unknown-frequency large-charge filter.
 - Mobile-responsive with bottom tab bar.
 - Search page with full filter set.
+- GmailConnect is a stateless display component; all scan state lives in page.tsx.
 - REST API ready for a future real data layer.
 
 ### Not yet built

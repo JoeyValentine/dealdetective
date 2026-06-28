@@ -117,6 +117,8 @@ function SubscriptionItem({ sub, highlight }: { sub: Subscription; highlight?: b
   );
 }
 
+const BILLING_ALERT_KEYWORDS = ['failed payment', 'payment failed', 'payment declined', 'update required', 'past due', 'overdue', 'expires soon', 'card expired'];
+
 // ── Main sidebar component ────────────────────────────────────────────────────
 
 interface Props {
@@ -175,17 +177,17 @@ export default function SubscriptionSidebar({ subscriptions }: Props) {
     [active]
   );
 
-  const BILLING_ALERT_KEYWORDS = ['failed payment', 'payment failed', 'payment declined', 'update required', 'past due', 'overdue', 'expires soon', 'card expired'];
-
-  const alerts = useMemo(
-    () => subscriptions.flatMap((s) => {
+  const alerts = useMemo(() => {
+    const seen = new Set<string>();
+    return subscriptions.flatMap((s) => {
+      if (seen.has(s.serviceNormalized)) return [];
       const text = (s.notes + ' ' + s.sourceEmail.subject).toLowerCase();
       const matched = BILLING_ALERT_KEYWORDS.find((k) => text.includes(k));
-      return matched ? [{ sub: s, message: matched }] : [];
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [subscriptions]
-  );
+      if (!matched) return [];
+      seen.add(s.serviceNormalized);
+      return [{ sub: s, message: matched }];
+    });
+  }, [subscriptions]);
 
   const isEmpty = subscriptions.length === 0;
 
@@ -221,15 +223,27 @@ export default function SubscriptionSidebar({ subscriptions }: Props) {
                   <p className="text-xs font-semibold text-red-500 uppercase tracking-wide">Important Alerts</p>
                   <span className="ml-0.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">{alerts.length}</span>
                 </div>
-                {alerts.map(({ sub, message }) => (
-                  <div key={sub.id} className="rounded-2xl px-3.5 py-3 bg-red-50 dark:bg-red-900/15 border border-red-200/60 dark:border-red-700/30 flex items-start gap-2.5">
-                    <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--text-1)] truncate">{sub.serviceName}</p>
-                      <p className="text-xs text-red-500 capitalize mt-0.5">{message}</p>
-                    </div>
-                  </div>
-                ))}
+                {alerts.map(({ sub, message }) => {
+                  const gmailUrl = sub.sourceEmail.messageId
+                    ? `https://mail.google.com/mail/u/0/#inbox/${sub.sourceEmail.messageId}`
+                    : undefined;
+                  return (
+                    <a
+                      key={sub.id}
+                      href={gmailUrl}
+                      target={gmailUrl ? "_blank" : undefined}
+                      rel="noopener noreferrer"
+                      className={`rounded-2xl px-3.5 py-3 bg-red-50 dark:bg-red-900/15 border border-red-200/60 dark:border-red-700/30 flex items-start gap-2.5 ${gmailUrl ? "hover:bg-red-100 dark:hover:bg-red-900/25 transition-colors cursor-pointer" : ""}`}
+                    >
+                      <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[var(--text-1)] truncate">{sub.serviceName}</p>
+                        <p className="text-xs text-red-500 capitalize mt-0.5">{message}</p>
+                      </div>
+                      {gmailUrl && <ExternalLink size={11} className="text-red-400 shrink-0 mt-0.5" />}
+                    </a>
+                  );
+                })}
               </div>
             )}
 

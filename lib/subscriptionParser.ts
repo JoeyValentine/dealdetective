@@ -30,7 +30,7 @@ function computeNextBillingDate(
 }
 
 const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment', 'application fee', 'deposit', 'semester', 'financial aid'];
-const EDU_KEYWORDS = ['university', 'college', 'school', 'institute'];
+const EDU_KEYWORDS = ['university', 'college', 'school', 'institute', 'enrollment', 'tuition'];
 
 export async function parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]> {
   const emailText = (email.subject + ' ' + email.body).toLowerCase();
@@ -54,7 +54,7 @@ If this email is a billing charge, invoice, receipt, renewal confirmation, or ca
   "serviceName": "Exact service or company name (e.g. 'Netflix', 'Spotify', 'AWS')",
   "amount": number in dollars (e.g. 15.99) — must be the actual charged amount,
   "currency": "USD" or detected currency code,
-  "frequency": one of ["monthly","annual","weekly","unknown"],
+  "frequency": one of ["monthly","annual","weekly","unknown"] — only use monthly/annual/weekly when the email explicitly states the billing cycle (e.g., "monthly subscription", "annual renewal", "auto-renews", "billing cycle"). Use "unknown" when not explicitly stated,
   "category": one of ["Entertainment","Health","SaaS","Utilities","Food","Other"],
   "status": "active" for charges/renewals/invoices, "cancelled" for cancellation confirmations only,
   "lastBilledDate": "ISO 8601 date this charge occurred" or null,
@@ -89,6 +89,7 @@ Return ONLY a valid JSON array, no other text.`;
       .filter((raw: Record<string, unknown>) => {
         if (!raw.serviceName || typeof raw.amount !== "number") return false;
         if ((raw.amount as number) <= 0 || (raw.amount as number) > 2000) return false;
+        if (raw.frequency === 'unknown' && (raw.amount as number) > 500) return false;
         const name = (raw.serviceName as string).toLowerCase();
         if (EDU_KEYWORDS.some((k) => name.includes(k))) return false;
         return true;

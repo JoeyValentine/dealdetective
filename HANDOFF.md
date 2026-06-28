@@ -1,5 +1,5 @@
 # DealDetective — Handoff Document
-**Last updated: June 26, 2026**
+**Last updated: June 28, 2026**
 **Repo: https://github.com/JoeyValentine/dealdetective**
 **Built by: Giuseppe (Joey Valentine) + Claude**
 
@@ -16,19 +16,21 @@ DealDetective is an AI-powered promotional email analyzer and subscription track
 ### Done
 - Full Next.js 16.2.9 App Router app with TypeScript + Tailwind CSS v4
 - Google OAuth via next-auth v5 (beta) with `gmail.readonly` scope
-- Real Gmail scanning: promotions tab (up to 500 emails for deals, up to 1000 for billing)
-- Claude AI deal parser (`lib/parser.ts`) — extracts retailer, offer, promo code, expiry, category, notes, Gmail messageId
-- Claude AI subscription parser (`lib/subscriptionParser.ts`) — extracts service name, amount, frequency, next billing date, category, cancellation status
-- In-memory deal store and subscription store — both use globalThis singleton pattern to survive Turbopack module reloads in dev
-- Dashboard: stats bar, expiring-soon shelf, Top 10 Steals horizontal strip, filterable deal feed, evergreen shelf
-- Subscriptions & Bills sidebar: hero monthly total, category breakdown, Upcoming This Week, Active Subscriptions, Recently Cancelled, privacy footer
+- **Streaming Gmail scan**: promo emails fetched in pages of 25 (up to 300 total), Claude batches of 5 run 4-at-a-time in parallel, results stream to the frontend as NDJSON — deals appear in the feed live as they're parsed
+- Billing email scan: up to 1000 emails for subscription detection
+- Claude AI deal parser — extracts retailer, offer, promo code, expiry, category, notes, Gmail messageId
+- **Deal quality score (1-10)**: 1 base + up to 5 from discount% + urgency + promo code + brands + high confidence. Deals and Top 10 Steals sorted by this score.
+- Copy code button on every promo code pill (clipboard API, 2s checkmark)
+- Quality score badge on each deal card (`★7`)
+- Claude AI subscription parser with multi-layer inflation filtering: `.edu` domain, EDU keywords in name, `$2000` hard cap, `frequency=unknown && amount>$500` filter, recurring keyword requirement in prompt
+- In-memory deal store and subscription store — globalThis singleton pattern (survives Turbopack hot reloads)
+- Dashboard: stats bar, expiring-soon shelf, Top 10 Steals strip, filterable deal feed, evergreen shelf
+- Subscriptions sidebar: hero monthly total, category breakdown, Upcoming This Week, Active Subscriptions, Recently Cancelled; **Important Alerts section with clickable Gmail links, deduplicated by merchant**
 - Desktop two-column layout (300px sticky sidebar + flex-1 main); mobile bottom tab bar (Deals | Bills)
-- Dark mode with no-FOUC (CSS custom properties, Tailwind v4 `@custom-variant dark`, inline `<script>` in `<head>`, ThemeToggle component, localStorage persistence)
-- Confetti animation on scan complete: money/bill emojis, two sequential celebration messages
-- Scan progress: elapsed timer + indeterminate scanning bar + estimated time copy
-- Repeatable deal badges (violet RefreshCw badge when `isRepeatable: true`)
-- Gmail links on every deal card and subscription item
-- Search page (`/search`) with full filter set (category, min discount, include expired)
+- **Lifted scan state**: `GmailConnect` is a stateless display component; all scan state (`scanState`, `foundCount`, `elapsed`, `scanResult`, `errorMsg`) lives in `page.tsx` so both header and hero buttons share one source of truth
+- Dark mode with no-FOUC; Confetti on scan complete; elapsed timer + scanning bar
+- Repeatable deal badges; Gmail links on every card and subscription item
+- Search page (`/search`) with full filter set
 - Mock data cleared — app runs entirely on real Gmail data
 
 ### Not Yet Built
@@ -189,8 +191,32 @@ No-expiry deals default to `urgency: "normal"` unless Claude explicitly returns 
 ### Dark mode
 CSS custom properties on `:root` and `.dark`. Tailwind v4 uses `@custom-variant dark (&:where(.dark, .dark *))` in `globals.css` (no tailwind.config.js). No-FOUC: inline `<script>` in `<head>` reads localStorage and applies `.dark` before first paint. `suppressHydrationWarning` on `<html>`.
 
-### Parallel scanning
-GmailConnect fires POST `/api/gmail/sync` (deals) and POST `/api/gmail/subscriptions` (bills) simultaneously via `Promise.allSettled`. Then fetches both result sets in parallel. UI waits for both before calling callbacks and firing confetti.
+### Streaming scan architecture
+`POST /api/gmail/sync` returns a `ReadableStream` with NDJSON. Each page of 25 Gmail emails is fetched, keyword-filtered, then parsed by Claude in batches of 5 running 4 parallel at a time. Parsed deals stream to the client as `{ type: "deals", deals, totalFound, scanned }` chunks. `page.tsx` reads the stream with a `ReadableStreamDefaultReader`, accumulates deals, and calls `setRealDeals` on each chunk — so the deal feed updates live. Max 300 emails, no deal count cap.
+
+`POST /api/gmail/subscriptions` fires in parallel with the deal scan from `handleScan` in `page.tsx`; both are awaited before confetti fires.
+
+### Lifted scan state
+`GmailConnect` is a pure display component that takes `{ scanState, foundCount, elapsed, scanResult, errorMsg, onScan, large? }` as props. All state lives in `page.tsx`. This ensures the header button and the hero empty-state button always show identical scanning UI.
+
+### Deal quality score
+```
+score = 1 (base)
+      + min(5, floor(effectiveDiscountPercent / 10))
+      + (urgency === "urgent" ? 1 : 0)
+      + (promoCode ? 1 : 0)
+      + (brands.length > 0 ? 1 : 0)
+      + (confidence === "high" ? 1 : 0)
+score = min(10, score)
+```
+Computed in `mapRawToDeal` in `lib/parser.ts`. Used as primary sort key for Top 10 Steals and as tiebreaker in `rankDeals()`.
+
+### Subscription inflation protection
+Four layers:
+1. `ONE_TIME_PATTERNS` in email text → skip immediately (tuition, enrollment, registration fee, etc.)
+2. `.edu` domain or EDU keywords in sender domain → skip
+3. Claude prompt instruction: use `frequency: "unknown"` unless billing cycle explicitly stated
+4. Post-filter: `amount > 2000` → skip; `frequency === "unknown" && amount > 500` → skip; EDU keywords in serviceName → skip
 
 ### Subscription dedup
 Key: `serviceNormalized` (lowercase, non-alphanumeric stripped). Most recent record wins using `lastBilledDate ?? sourceEmail.receivedAt`.

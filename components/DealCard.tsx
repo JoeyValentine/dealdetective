@@ -115,6 +115,7 @@ export default function DealCard({ deal, compact = false }: DealCardProps) {
       <div className="flex items-center gap-1.5 flex-wrap">
         <ExpiryBadge expirationDate={deal.expirationDate} expirationStatus={deal.expirationStatus} />
         <ConfidenceBadge score={deal.confidenceScore} />
+        <span className="text-[10px] font-semibold text-amber-500/70 tabular-nums">★{deal.qualityScore}</span>
         {deal.repeatFrequency && (
           <span className="inline-flex items-center gap-1 text-xs bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 px-2.5 py-1 rounded-full">
             <RefreshCw size={9} />
