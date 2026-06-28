@@ -31,6 +31,7 @@ function computeNextBillingDate(
 
 const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment', 'application fee', 'deposit', 'semester', 'financial aid'];
 const EDU_KEYWORDS = ['university', 'college', 'school', 'institute', 'enrollment', 'tuition'];
+const KNOWN_SERVICES = ['netflix', 'spotify', 'apple', 'google', 'amazon', 'anthropic', 'adobe', 'hulu', 'disney', 'microsoft', 'dropbox', 'github', 'zoom', 'slack', 'notion', 'figma', 'canva', 'openai', 'youtube', 'icloud', 'xbox', 'playstation', 'twitch', 'patreon'];
 
 export async function parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]> {
   const emailText = (email.subject + ' ' + email.body).toLowerCase();
@@ -89,9 +90,14 @@ Return ONLY a valid JSON array, no other text.`;
       .filter((raw: Record<string, unknown>) => {
         if (!raw.serviceName || typeof raw.amount !== "number") return false;
         if ((raw.amount as number) <= 0 || (raw.amount as number) > 2000) return false;
-        if (raw.frequency === 'unknown' && (raw.amount as number) > 500) return false;
         const name = (raw.serviceName as string).toLowerCase();
         if (EDU_KEYWORDS.some((k) => name.includes(k))) return false;
+        if (raw.frequency === 'unknown') {
+          const amount = raw.amount as number;
+          const normalized = name.replace(/[^a-z0-9]/g, '');
+          const isKnown = KNOWN_SERVICES.some((s) => normalized.includes(s)) || raw.category === 'SaaS';
+          if (amount >= 100 && !isKnown) return false;
+        }
         return true;
       })
       .map((raw: Record<string, unknown>) => {

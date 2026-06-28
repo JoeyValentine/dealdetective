@@ -141,13 +141,19 @@ export default function Home() {
     };
   }, [realDeals]);
 
-  const top10 = useMemo(
-    () => allActive
+  const top10 = useMemo(() => {
+    const counts = new Map<string, number>();
+    return allActive
       .filter((d) => d.urgency !== "evergreen" && d.expirationStatus !== "expired")
       .sort((a, b) => b.qualityScore - a.qualityScore)
-      .slice(0, 10),
-    [allActive]
-  );
+      .filter((d) => {
+        const c = counts.get(d.retailerNormalized) ?? 0;
+        if (c >= 2) return false;
+        counts.set(d.retailerNormalized, c + 1);
+        return true;
+      })
+      .slice(0, 10);
+  }, [allActive]);
 
   const evergreen = useMemo(() => allActive.filter((d) => d.urgency === "evergreen"), [allActive]);
   const expiringDeals = useMemo(() => allActive.filter((d) => d.urgency === "urgent"), [allActive]);
@@ -200,7 +206,14 @@ export default function Home() {
     if (activeCategory !== "All") deals = deals.filter((d) => d.category === activeCategory);
     if (searchQuery) deals = searchDeals(deals, searchQuery);
     if (minDiscount > 0) deals = deals.filter((d) => d.effectiveDiscountPercent >= minDiscount);
-    return rankDeals(deals);
+    const ranked = rankDeals(deals);
+    const counts = new Map<string, number>();
+    return ranked.filter((d) => {
+      const c = counts.get(d.retailerNormalized) ?? 0;
+      if (c >= 3) return false;
+      counts.set(d.retailerNormalized, c + 1);
+      return true;
+    });
   }, [allActive, activeCategory, searchQuery, minDiscount]);
 
   // ── Shared render pieces ──────────────────────────────────────────────────
