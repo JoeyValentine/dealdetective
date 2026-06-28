@@ -147,6 +147,74 @@ export async function fetchBillingEmails(
   return emails;
 }
 
+export async function fetchPromoEmailsPage(
+  accessToken: string,
+  pageToken?: string,
+  pageSize = 25
+): Promise<{ emails: RawEmail[]; nextPageToken?: string; count: number }> {
+  const q = encodeURIComponent("category:promotions");
+  const pt = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+  const list = await gmailGet<{ messages?: { id: string }[]; nextPageToken?: string }>(
+    `/users/me/messages?q=${q}&maxResults=${pageSize}${pt}`,
+    accessToken
+  );
+  const ids = list.messages ?? [];
+  const count = ids.length;
+
+  if (count === 0) return { emails: [], nextPageToken: list.nextPageToken, count: 0 };
+
+  // Fetch metadata in parallel
+  const metaResults = await Promise.allSettled(
+    ids.map((m) =>
+      gmailGet<GmailMeta>(
+        `/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        accessToken
+      )
+    )
+  );
+  const metas = metaResults
+    .filter((r): r is PromiseFulfilledResult<GmailMeta> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  // Filter to promotional-looking subjects
+  const promotional = metas.filter((m) =>
+    PROMO_RE.test(header(m.payload.headers, "Subject"))
+  );
+
+  if (promotional.length === 0) return { emails: [], nextPageToken: list.nextPageToken, count };
+
+  // Fetch full bodies in parallel
+  const fullResults = await Promise.allSettled(
+    promotional.map((m) =>
+      gmailGet<GmailFull>(`/users/me/messages/${m.id}?format=full`, accessToken)
+    )
+  );
+
+  const emails: RawEmail[] = [];
+  for (const r of fullResults) {
+    if (r.status !== "fulfilled") continue;
+    const msg = r.value;
+    const subject = header(msg.payload.headers, "Subject");
+    const from = header(msg.payload.headers, "From");
+    const body = extractBody(msg.payload);
+    if (!body.trim()) continue;
+
+    const senderEmail = from.match(/<([^>]+)>/)?.[1] ?? from;
+    const senderDomain = senderEmail.split("@")[1] ?? "";
+
+    emails.push({
+      subject,
+      body: body.slice(0, 8000),
+      receivedAt: new Date(parseInt(msg.internalDate)).toISOString(),
+      senderEmail,
+      senderDomain,
+      messageId: msg.id,
+    });
+  }
+
+  return { emails, nextPageToken: list.nextPageToken, count };
+}
+
 export async function fetchPromoEmails(
   accessToken: string,
   maxFetch = 500

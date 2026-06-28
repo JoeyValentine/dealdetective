@@ -20,6 +20,7 @@ export default function GmailConnect({ onSyncComplete, onSubscriptionSyncComplet
   const [scanResult, setScanResult] = useState<{ deals: number; subs: number; emails: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [foundCount, setFoundCount] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function startTimer() {
@@ -37,38 +38,67 @@ export default function GmailConnect({ onSyncComplete, onSubscriptionSyncComplet
 
   const handleScan = async () => {
     setScanState("scanning");
+    setFoundCount(0);
     setErrorMsg("");
     startTimer();
 
     try {
-      // Run both scans in parallel
-      const [dealSync, subSync] = await Promise.allSettled([
-        fetch("/api/gmail/sync", { method: "POST" }).then((r) => r.json()),
-        fetch("/api/gmail/subscriptions", { method: "POST" }).then((r) => r.json()),
-      ]);
+      // Start both in parallel — deal scan streams, sub scan is regular JSON
+      const dealFetchPromise = fetch("/api/gmail/sync", { method: "POST" });
+      const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
+        .then((r) => r.json())
+        .catch(() => null);
 
-      const dealData = dealSync.status === "fulfilled" ? dealSync.value : { scanned: 0, newDeals: 0 };
-      const subData  = subSync.status  === "fulfilled" ? subSync.value  : { scanned: 0, newSubs: 0 };
+      const dealRes = await dealFetchPromise;
+      if (!dealRes.ok) {
+        const err = await dealRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `Sync failed: ${dealRes.status}`);
+      }
 
-      // Fetch stored results for both
-      const [dealsRes, subsRes] = await Promise.allSettled([
-        fetch("/api/gmail/deals").then((r) => r.json()),
-        fetch("/api/gmail/subscriptions").then((r) => r.json()),
-      ]);
+      // Read streaming NDJSON response
+      const accumulated: Deal[] = [];
+      let scannedCount = 0;
+
+      if (dealRes.body) {
+        const reader = dealRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const chunk = JSON.parse(line) as { type: string; deals?: Deal[]; scanned?: number };
+              if (chunk.type === "deals" && Array.isArray(chunk.deals)) {
+                accumulated.push(...chunk.deals);
+                setFoundCount(accumulated.length);
+                onSyncComplete([...accumulated]);
+              } else if (chunk.type === "done") {
+                scannedCount = chunk.scanned ?? 0;
+              }
+            } catch { /* skip malformed line */ }
+          }
+        }
+      }
+
+      // Wait for subscription scan (already running in parallel)
+      await subSyncPromise;
+
+      const subsRes = await fetch("/api/gmail/subscriptions")
+        .then((r) => r.json())
+        .catch(() => ({ subscriptions: [] }));
+      const subs: Subscription[] = subsRes.subscriptions ?? [];
 
       stopTimer();
       setScanState("done");
+      setScanResult({ deals: accumulated.length, subs: subs.length, emails: scannedCount });
 
-      const deals = dealsRes.status === "fulfilled" ? (dealsRes.value.deals ?? []) : [];
-      const subs  = subsRes.status  === "fulfilled" ? (subsRes.value.subscriptions ?? []) : [];
-
-      setScanResult({
-        deals: deals.length,
-        subs: subs.length,
-        emails: (dealData.scanned ?? 0) + (subData.scanned ?? 0),
-      });
-
-      onSyncComplete(deals);
+      onSyncComplete([...accumulated]);
       onSubscriptionSyncComplete?.(subs);
     } catch (err) {
       stopTimer();
@@ -100,9 +130,13 @@ export default function GmailConnect({ onSyncComplete, onSubscriptionSyncComplet
         <div className="flex flex-col items-end gap-1">
           <div className="flex items-center gap-2 text-sm text-[var(--text-2)]">
             <Loader size={13} className="animate-spin text-amber-500 shrink-0" />
-            <span className="hidden sm:inline">Scanning… {formatElapsed(elapsed)}</span>
+            <span className="hidden sm:inline">
+              {foundCount > 0 ? `Found ${foundCount} deals · ` : "Scanning… "}{formatElapsed(elapsed)}
+            </span>
           </div>
-          <span className="text-xs text-[var(--text-3)] hidden sm:inline">Deals + Bills · Est. 3–5 min</span>
+          <span className="text-xs text-[var(--text-3)] hidden sm:inline">
+            {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · Est. 60–90s"}
+          </span>
           <div className="relative w-32 h-1 bg-[var(--surface)] rounded-full overflow-hidden hidden sm:block">
             <div className="scanning-bar rounded-full" />
           </div>
