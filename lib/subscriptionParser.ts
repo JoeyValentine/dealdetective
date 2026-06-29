@@ -29,18 +29,9 @@ function computeNextBillingDate(
   }
 }
 
-const ONE_TIME_PATTERNS = ['tuition', 'enrollment', 'registration fee', 'one-time', 'single payment', 'application fee', 'deposit', 'semester', 'financial aid'];
-const EDU_KEYWORDS = ['university', 'college', 'school', 'institute', 'enrollment', 'tuition'];
-const KNOWN_SERVICES = ['netflix', 'spotify', 'apple', 'google', 'amazon', 'anthropic', 'adobe', 'hulu', 'disney', 'microsoft', 'dropbox', 'github', 'zoom', 'slack', 'notion', 'figma', 'canva', 'openai', 'youtube', 'icloud', 'xbox', 'playstation', 'twitch', 'patreon'];
+const EDU_KEYWORDS = ['university', 'college', 'tuition', 'school', 'institute'];
 
 export async function parseSubscriptionWithClaude(email: RawEmail): Promise<Subscription[]> {
-  const emailText = (email.subject + ' ' + email.body).toLowerCase();
-  if (ONE_TIME_PATTERNS.some((p) => emailText.includes(p))) return [];
-
-  // Skip educational institution emails (.edu domains or institution name in domain)
-  const domain = (email.senderDomain || '').toLowerCase();
-  if (domain.endsWith('.edu') || EDU_KEYWORDS.some((k) => domain.includes(k))) return [];
-
   const prompt = `You are a subscription and billing email parser. Extract recurring payment/subscription info.
 
 Email Subject: ${email.subject}
@@ -55,7 +46,7 @@ If this email is a billing charge, invoice, receipt, renewal confirmation, or ca
   "serviceName": "Exact service or company name (e.g. 'Netflix', 'Spotify', 'AWS')",
   "amount": number in dollars (e.g. 15.99) — must be the actual charged amount,
   "currency": "USD" or detected currency code,
-  "frequency": one of ["monthly","annual","weekly","unknown"] — only use monthly/annual/weekly when the email explicitly states the billing cycle (e.g., "monthly subscription", "annual renewal", "auto-renews", "billing cycle"). Use "unknown" when not explicitly stated,
+  "frequency": one of ["monthly","annual","weekly","unknown"],
   "category": one of ["Entertainment","Health","SaaS","Utilities","Food","Other"],
   "status": "active" for charges/renewals/invoices, "cancelled" for cancellation confirmations only,
   "lastBilledDate": "ISO 8601 date this charge occurred" or null,
@@ -92,12 +83,6 @@ Return ONLY a valid JSON array, no other text.`;
         if ((raw.amount as number) <= 0 || (raw.amount as number) > 2000) return false;
         const name = (raw.serviceName as string).toLowerCase();
         if (EDU_KEYWORDS.some((k) => name.includes(k))) return false;
-        if (raw.frequency === 'unknown') {
-          const amount = raw.amount as number;
-          const normalized = name.replace(/[^a-z0-9]/g, '');
-          const isKnown = KNOWN_SERVICES.some((s) => normalized.includes(s)) || raw.category === 'SaaS';
-          if (amount >= 100 && !isKnown) return false;
-        }
         return true;
       })
       .map((raw: Record<string, unknown>) => {

@@ -22,7 +22,7 @@ DealDetective is an AI-powered promotional email analyzer and subscription track
 - **Deal quality score (1-10)**: 1 base + up to 5 from discount% + urgency + promo code + brands + high confidence. Deals and Top 10 Steals sorted by this score.
 - Copy code button on every promo code pill (clipboard API, 2s checkmark)
 - Quality score badge on each deal card (`★7`)
-- Claude AI subscription parser with multi-layer inflation filtering: `.edu` domain, EDU keywords in name, `$2000` hard cap, `frequency=unknown && amount>$500` filter, recurring keyword requirement in prompt
+- Claude AI subscription parser — two simple hard filters: merchant name contains EDU keyword (university/college/tuition/school/institute) → drop; amount > $2000 → drop. Everything else deferred to Claude's judgment.
 - In-memory deal store and subscription store — globalThis singleton pattern (survives Turbopack hot reloads)
 - Dashboard: stats bar, expiring-soon shelf, Top 10 Steals strip, filterable deal feed, evergreen shelf
 - Subscriptions sidebar: hero monthly total, category breakdown, Upcoming This Week, Active Subscriptions, Recently Cancelled; **Important Alerts section with clickable Gmail links, deduplicated by merchant**
@@ -207,16 +207,18 @@ score = 1 (base)
       + (promoCode ? 1 : 0)
       + (brands.length > 0 ? 1 : 0)
       + (confidence === "high" ? 1 : 0)
-score = min(10, score)
+      + (known brand match ? 1 : 0)   // Amazon, Apple, Nike, Adidas, Target, etc.
+      - (confidence === "low" ? 1 : 0)
+score = clamp(1, 10)
 ```
-Computed in `mapRawToDeal` in `lib/parser.ts`. Used as primary sort key for Top 10 Steals and as tiebreaker in `rankDeals()`.
+Computed in `mapRawToDeal` in `lib/parser.ts`. Used as primary sort key for Top 10 Steals and as tiebreaker in `rankDeals()`. Per-merchant caps applied at render: max 2 per merchant in Top 10, max 3 in main feed.
 
-### Subscription inflation protection
-Four layers:
-1. `ONE_TIME_PATTERNS` in email text → skip immediately (tuition, enrollment, registration fee, etc.)
-2. `.edu` domain or EDU keywords in sender domain → skip
-3. Claude prompt instruction: use `frequency: "unknown"` unless billing cycle explicitly stated
-4. Post-filter: `amount > 2000` → skip; `frequency === "unknown" && amount > 500` → skip; EDU keywords in serviceName → skip
+### Subscription filter
+Two hard rules only — everything else deferred to Claude:
+1. Merchant name contains EDU keyword (university/college/tuition/school/institute) → drop
+2. Amount > $2000 → drop
+
+Subscription parsing: batches of 5 in a simple sequential loop. Dedup key: `serviceNormalized` (lowercase alphanumeric); most recent record wins.
 
 ### Subscription dedup
 Key: `serviceNormalized` (lowercase, non-alphanumeric stripped). Most recent record wins using `lastBilledDate ?? sourceEmail.receivedAt`.
