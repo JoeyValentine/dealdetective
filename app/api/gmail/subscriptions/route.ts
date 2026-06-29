@@ -36,6 +36,7 @@ export async function POST() {
     console.log(`[/api/gmail/subscriptions] user=${userId} scanned=${emails.length} newSubs=${newSubs} storeSize=${totalStored}`);
     return NextResponse.json({ scanned: emails.length, newSubs, totalStored });
   } catch (err) {
+    console.error(`[subscriptions] POST handler crashed for ${userId}:`, err);
     const message = err instanceof Error ? err.message : "Subscription scan failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }

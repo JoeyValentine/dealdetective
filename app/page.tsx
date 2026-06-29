@@ -36,6 +36,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanningRef = useRef(false);
 
   const startTimer = useCallback(() => {
     setElapsed(0);
@@ -49,6 +50,8 @@ export default function Home() {
   useEffect(() => () => stopTimer(), [stopTimer]);
 
   const handleScan = useCallback(async () => {
+    if (scanningRef.current) return;
+    scanningRef.current = true;
     setScanState("scanning");
     setFoundCount(0);
     setErrorMsg("");
@@ -98,6 +101,7 @@ export default function Home() {
     } catch (err) {
       dealError = err instanceof Error ? err : new Error("Deal scan failed");
     } finally {
+      scanningRef.current = false;
       // Always load subscriptions regardless of deal scan outcome
       await subSyncPromise;
       const subsRes = await fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] }));
