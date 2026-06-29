@@ -30,6 +30,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.access_token) {
         token.accessToken = account.access_token;
       }
+      if (account?.refresh_token) {
+        token.refreshToken = account.refresh_token;
+      }
       if (account?.provider) {
         token.provider = account.provider;
       }
