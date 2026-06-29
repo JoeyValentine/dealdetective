@@ -33,10 +33,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.refresh_token) {
         token.refreshToken = account.refresh_token;
       }
+      if (account?.expires_at) {
+        token.accessTokenExpires = account.expires_at * 1000;
+      }
       if (account?.provider) {
         token.provider = account.provider;
       }
-      return token;
+
+      // If access token has not expired, return it as-is
+      if (Date.now() < (token.accessTokenExpires as number ?? 0)) {
+        return token;
+      }
+
+      // Microsoft tokens use a different refresh endpoint — skip Google refresh
+      if (token.provider === "microsoft-entra-id") {
+        return token;
+      }
+
+      // Access token expired — try to refresh it
+      try {
+        const response = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID!,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+            grant_type: "refresh_token",
+            refresh_token: token.refreshToken as string,
+          }),
+        });
+        const refreshed = await response.json() as { access_token?: string; expires_in?: number; refresh_token?: string };
+        if (!response.ok) throw refreshed;
+        return {
+          ...token,
+          accessToken: refreshed.access_token,
+          accessTokenExpires: Date.now() + (refreshed.expires_in ?? 3600) * 1000,
+          refreshToken: refreshed.refresh_token ?? token.refreshToken,
+        };
+      } catch (error) {
+        console.error("Failed to refresh access token", error);
+        return { ...token, error: "RefreshAccessTokenError" };
+      }
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;
