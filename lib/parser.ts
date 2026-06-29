@@ -7,6 +7,8 @@ function generateId(): string {
   return `deal-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const KNOWN_BRANDS = ['amazon', 'apple', 'nike', 'adidas', 'target', 'walmart', 'levis', 'zara', 'handm', 'spotify', 'netflix', 'google', 'microsoft', 'anthropic', 'uber', 'doordash'];
+
 function offerTypeToColor(offerType: OfferType, discountValue: number): DealColor {
   if (offerType === "bogo") return "green";
   if (offerType === "free_shipping" || offerType === "freebie") return "teal";
@@ -75,13 +77,16 @@ function mapRawToDeal(raw: Record<string, unknown>, email: RawEmail): Deal {
   const promoCode = (raw.promoCode as string | null) || null;
   const brands = (raw.brands as string[]) || [];
 
+  const retailerSlug = retailer.toLowerCase().replace(/[^a-z0-9]/g, "");
   let qualityScore = 1;
   qualityScore += Math.min(5, Math.floor(effectivePct / 10));
   if (urgency === "urgent") qualityScore += 1;
   if (promoCode) qualityScore += 1;
   if (brands.length > 0) qualityScore += 1;
   if (confidence === "high") qualityScore += 1;
-  qualityScore = Math.min(10, qualityScore);
+  if (KNOWN_BRANDS.some((b) => retailerSlug.includes(b))) qualityScore += 1;
+  if (confidence === "low") qualityScore -= 1;
+  qualityScore = Math.min(10, Math.max(1, qualityScore));
 
   return {
     id: generateId(),
