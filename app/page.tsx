@@ -33,6 +33,7 @@ export default function Home() {
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [scanResult, setScanResult] = useState<{ deals: number; subs: number; emails: number } | null>(null);
   const [foundCount, setFoundCount] = useState(0);
+  const [scannedEmails, setScannedEmails] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -54,50 +55,63 @@ export default function Home() {
     scanningRef.current = true;
     setScanState("scanning");
     setFoundCount(0);
+    setScannedEmails(0);
     setErrorMsg("");
     startTimer();
 
-    const dealFetchPromise = fetch("/api/gmail/sync", { method: "POST" });
+    // Subscription scan fires once in parallel with the first chunk
     const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
       .then((r) => r.json())
       .catch(() => null);
 
     const accumulated: Deal[] = [];
     let scannedCount = 0;
+    let pageToken: string | null = null;
     let dealError: Error | null = null;
 
     try {
-      const dealRes = await dealFetchPromise;
-      if (!dealRes.ok) {
-        const err = await dealRes.json().catch(() => ({}));
-        throw new Error((err as { error?: string }).error ?? `Sync failed: ${dealRes.status}`);
-      }
+      do {
+        const dealRes = await fetch("/api/gmail/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pageToken ? { pageToken } : {}),
+        });
 
-      if (dealRes.body) {
-        const reader = dealRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const chunk = JSON.parse(line) as { type: string; deals?: Deal[]; scanned?: number };
-              if (chunk.type === "deals" && Array.isArray(chunk.deals)) {
-                accumulated.push(...chunk.deals);
-                setFoundCount(accumulated.length);
-                setRealDeals([...accumulated]);
-              } else if (chunk.type === "done") {
-                scannedCount = chunk.scanned ?? 0;
-              }
-            } catch { /* skip malformed line */ }
+        if (!dealRes.ok) {
+          const err = await dealRes.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? `Sync failed: ${dealRes.status}`);
+        }
+
+        pageToken = null;
+
+        if (dealRes.body) {
+          const reader = dealRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split("\n");
+            buf = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const chunk = JSON.parse(line) as { type: string; deals?: Deal[]; scanned?: number; nextPageToken?: string | null };
+                if (chunk.type === "deals" && Array.isArray(chunk.deals)) {
+                  accumulated.push(...chunk.deals);
+                  setFoundCount(accumulated.length);
+                  setRealDeals([...accumulated]);
+                } else if (chunk.type === "done") {
+                  scannedCount += chunk.scanned ?? 0;
+                  setScannedEmails(scannedCount);
+                  pageToken = chunk.nextPageToken ?? null;
+                }
+              } catch { /* skip malformed line */ }
+            }
           }
         }
-      }
+      } while (pageToken);
     } catch (err) {
       dealError = err instanceof Error ? err : new Error("Deal scan failed");
     } finally {
@@ -248,7 +262,7 @@ export default function Home() {
       <p className="text-[var(--text-2)] max-w-sm mx-auto leading-relaxed mb-8">
         DealDetective scans your Promotions inbox and surfaces every discount, promo code, and flash sale — ranked by urgency and value.
       </p>
-      <GmailConnect large scanState={scanState} onScan={handleScan} foundCount={foundCount} elapsed={elapsed} scanResult={scanResult} errorMsg={errorMsg} />
+      <GmailConnect large scanState={scanState} onScan={handleScan} foundCount={foundCount} scannedEmails={scannedEmails} elapsed={elapsed} scanResult={scanResult} errorMsg={errorMsg} />
       <div className="mt-10 flex items-center gap-6 text-xs text-[var(--text-3)]">
         <span>✓ Read-only access</span>
         <span>✓ No emails modified</span>
@@ -445,6 +459,7 @@ export default function Home() {
             scanState={scanState}
             onScan={handleScan}
             foundCount={foundCount}
+            scannedEmails={scannedEmails}
             elapsed={elapsed}
             scanResult={scanResult}
             errorMsg={errorMsg}

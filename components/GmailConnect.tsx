@@ -10,6 +10,7 @@ interface Props {
   scanState: ScanState;
   onScan: () => void;
   foundCount: number;
+  scannedEmails?: number;
   elapsed: number;
   scanResult: { deals: number; subs: number; emails: number } | null;
   errorMsg: string;
@@ -19,7 +20,7 @@ function formatElapsed(s: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-export default function GmailConnect({ large, scanState, onScan, foundCount, elapsed, scanResult, errorMsg }: Props) {
+export default function GmailConnect({ large, scanState, onScan, foundCount, scannedEmails, elapsed, scanResult, errorMsg }: Props) {
   const { data: session, status } = useSession();
 
   if (status === "loading") return null;
@@ -39,16 +40,18 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, ela
     );
   }
 
+  const scanLabel = foundCount > 0
+    ? `${foundCount} deals found${scannedEmails ? ` across ${scannedEmails} emails` : ""} · ${formatElapsed(elapsed)}`
+    : `Scanning… ${formatElapsed(elapsed)}`;
+
   const scanningUI = large ? (
     <div className="flex flex-col items-center gap-2">
       <div className="flex items-center gap-3 text-[var(--text-1)]">
         <Loader size={22} className="animate-spin text-amber-500" />
-        <span className="text-base font-medium">
-          {foundCount > 0 ? `Found ${foundCount} deals · ` : "Scanning… "}{formatElapsed(elapsed)}
-        </span>
+        <span className="text-base font-medium">{scanLabel}</span>
       </div>
       <p className="text-sm text-[var(--text-3)]">
-        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · Est. 60–90s"}
+        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · scanning all pages"}
       </p>
       <div className="relative w-48 h-1.5 bg-[var(--surface)] rounded-full overflow-hidden mt-1">
         <div className="scanning-bar rounded-full" />
@@ -58,12 +61,10 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, ela
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2 text-sm text-[var(--text-2)]">
         <Loader size={13} className="animate-spin text-amber-500 shrink-0" />
-        <span className="hidden sm:inline">
-          {foundCount > 0 ? `Found ${foundCount} deals · ` : "Scanning… "}{formatElapsed(elapsed)}
-        </span>
+        <span className="hidden sm:inline">{scanLabel}</span>
       </div>
       <span className="text-xs text-[var(--text-3)] hidden sm:inline">
-        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · Est. 60–90s"}
+        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · scanning all pages"}
       </span>
       <div className="relative w-32 h-1 bg-[var(--surface)] rounded-full overflow-hidden hidden sm:block">
         <div className="scanning-bar rounded-full" />
