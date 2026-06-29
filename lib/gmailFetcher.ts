@@ -85,7 +85,7 @@ const BILLING_QUERY = "subject:(invoice OR receipt OR billing OR subscription OR
 
 export async function fetchBillingEmails(
   accessToken: string,
-  maxFetch = 1000
+  maxFetch = 500
 ): Promise<RawEmail[]> {
   // 1. List message IDs matching billing subjects across all mail
   const list = await gmailGet<{ messages?: { id: string }[] }>(

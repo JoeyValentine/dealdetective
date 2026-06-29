@@ -17,7 +17,11 @@ export async function POST() {
 
   try {
     const isOutlook = session.provider === "microsoft-entra-id";
-    const emails = await (isOutlook ? fetchOutlookBillingEmails : fetchBillingEmails)(session.accessToken);
+    const emails = await (isOutlook ? fetchOutlookBillingEmails : fetchBillingEmails)(session.accessToken)
+      .catch((err: unknown) => {
+        console.error(`[subscriptions] Billing email fetch failed for ${userId}:`, err);
+        return [];
+      });
     console.log(`[subscriptions] Fetched ${emails.length} billing emails for ${userId}`);
 
     let newSubs = 0;
