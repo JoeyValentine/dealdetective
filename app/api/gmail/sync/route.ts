@@ -10,30 +10,6 @@ import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const PROMO_KEYWORDS = [
-  // Discounts
-  '% off', 'percent off', 'discount', 'sale', 'clearance', 'markdown',
-  // Deals
-  'deal', 'offer', 'promo', 'promotion', 'special', 'exclusive',
-  // Codes
-  'code', 'coupon', 'voucher', 'redeem', 'use code', 'promo code',
-  // Savings
-  'save', 'saving', 'savings', 'cheap', 'low price', 'best price',
-  // Free
-  'free', 'bogo', 'buy one', 'complimentary', 'on us',
-  // Urgency
-  'expires', 'expiring', 'limited time', 'today only', 'ends soon',
-  'last chance', 'dont miss', "don't miss", 'hurry', 'flash sale',
-  // Shopping
-  'shop', 'buy', 'order', 'purchase', 'checkout',
-  // Money
-  '$', '£', '€', 'price', 'cost', 'value', 'worth',
-  // Marketing
-  'new arrival', 'just launched', 'back in stock', 'selling fast',
-  'members only', 'vip', 'loyalty', 'reward', 'points',
-  // Generic promo
-  'unlock', 'activate', 'claim', 'grab', 'get yours', 'available now',
-];
 const PAGE_SIZE = 100;
 const BATCH = 5;
 const PARALLEL = 4;
@@ -71,49 +47,40 @@ export async function POST(request: Request) {
         const { emails, nextPageToken, count } = await fetchPage(accessToken, incomingPageToken, PAGE_SIZE);
 
         if (count > 0) {
-          const filtered = emails.filter((e) => {
-            const text = (e.subject + " " + e.body.slice(0, 1000)).toLowerCase();
-            return PROMO_KEYWORDS.some((k) => text.includes(k));
-          });
+          // Fast first batch: first 10 emails as 2 parallel Claude calls so deals appear quickly
+          const fast = emails.splice(0, BATCH * 2);
+          const fastDeals = (
+            await Promise.allSettled(
+              [fast.slice(0, BATCH), fast.slice(BATCH)]
+                .filter((s) => s.length > 0)
+                .map(parseEmailsBatchWithClaude)
+            )
+          ).flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+            .filter((d) => d.expirationStatus !== "expired");
+          if (fastDeals.length > 0) {
+            addDeals(userId, fastDeals);
+            totalDeals += fastDeals.length;
+            write({ type: "deals", deals: fastDeals, totalFound: totalDeals, scanned: count });
+          }
 
-          if (filtered.length > 0) {
-            // Fast first batch: first 10 emails as 2 parallel Claude calls so deals appear quickly
-            const fast = filtered.splice(0, BATCH * 2);
-            const fastDeals = (
-              await Promise.allSettled(
-                [fast.slice(0, BATCH), fast.slice(BATCH)]
-                  .filter((s) => s.length > 0)
-                  .map(parseEmailsBatchWithClaude)
-              )
-            ).flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-              .filter((d) => d.expirationStatus !== "expired");
-            if (fastDeals.length > 0) {
-              addDeals(userId, fastDeals);
-              totalDeals += fastDeals.length;
-              write({ type: "deals", deals: fastDeals, totalFound: totalDeals, scanned: count });
+          // Remaining: parallel groups of 4 batches of 5
+          const batchDeals: Deal[] = [];
+          for (let i = 0; i < emails.length; i += BATCH * PARALLEL) {
+            const group: Promise<Deal[]>[] = [];
+            for (let j = 0; j < PARALLEL; j++) {
+              const slice = emails.slice(i + j * BATCH, i + (j + 1) * BATCH);
+              if (slice.length > 0) group.push(parseEmailsBatchWithClaude(slice));
             }
-
-            // Remaining: parallel groups of 4 batches of 5
-            const batchDeals: Deal[] = [];
-            for (let i = 0; i < filtered.length; i += BATCH * PARALLEL) {
-              const group: Promise<Deal[]>[] = [];
-              for (let j = 0; j < PARALLEL; j++) {
-                const slice = filtered.slice(i + j * BATCH, i + (j + 1) * BATCH);
-                if (slice.length > 0) group.push(parseEmailsBatchWithClaude(slice));
-              }
-              const results = await Promise.allSettled(group);
-              for (const r of results) {
-                if (r.status === "fulfilled") batchDeals.push(...r.value);
-              }
+            const results = await Promise.allSettled(group);
+            for (const r of results) {
+              if (r.status === "fulfilled") batchDeals.push(...r.value);
             }
-            const activeBatch = batchDeals.filter((d) => d.expirationStatus !== "expired");
-            if (activeBatch.length > 0) {
-              addDeals(userId, activeBatch);
-              totalDeals += activeBatch.length;
-              write({ type: "deals", deals: activeBatch, totalFound: totalDeals, scanned: count });
-            }
-          } else {
-            write({ type: "progress", scanned: count, totalFound: totalDeals });
+          }
+          const activeBatch = batchDeals.filter((d) => d.expirationStatus !== "expired");
+          if (activeBatch.length > 0) {
+            addDeals(userId, activeBatch);
+            totalDeals += activeBatch.length;
+            write({ type: "deals", deals: activeBatch, totalFound: totalDeals, scanned: count });
           }
         }
 
