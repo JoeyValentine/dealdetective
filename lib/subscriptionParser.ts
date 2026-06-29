@@ -72,15 +72,22 @@ Return ONLY a valid JSON array, no other text.`;
   const content = message.content[0];
   if (content.type !== "text") return [];
 
-  const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const cleanJson = (text: string) =>
+    text
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+
+  const cleaned = cleanJson(content.text);
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = JSON.parse(cleaned);
   } catch {
     console.error(`[subscriptionParser] JSON.parse failed for "${email.subject}". Raw Claude response:\n${content.text}`);
-    // Regex fallback: extract the first [...] block before giving up
-    const match = content.text.match(/\[[\s\S]*\]/);
+    // Regex fallback: find a [...] block in the cleaned text
+    const match = cleaned.match(/\[[\s\S]*\]/);
     if (!match) return [];
     try {
       parsed = JSON.parse(match[0]);

@@ -64,7 +64,8 @@ export default function Home() {
       .then((r) => r.json())
       .catch(() => null);
 
-    const accumulated: Deal[] = [];
+    // Map keyed by retailerNormalized|discountValue|promoCode — deduplicates across chunks
+    const accumulated = new Map<string, Deal>();
     let scannedCount = 0;
     let pageToken: string | null = null;
     let dealError: Error | null = null;
@@ -99,9 +100,13 @@ export default function Home() {
               try {
                 const chunk = JSON.parse(line) as { type: string; deals?: Deal[]; scanned?: number; nextPageToken?: string | null };
                 if (chunk.type === "deals" && Array.isArray(chunk.deals)) {
-                  accumulated.push(...chunk.deals);
-                  setFoundCount(accumulated.length);
-                  setRealDeals([...accumulated]);
+                  for (const d of chunk.deals) {
+                    const key = `${d.retailerNormalized}|${d.discountValue}|${d.promoCode ?? ""}`;
+                    const existing = accumulated.get(key);
+                    if (!existing || d.qualityScore > existing.qualityScore) accumulated.set(key, d);
+                  }
+                  setFoundCount(accumulated.size);
+                  setRealDeals(Array.from(accumulated.values()));
                 } else if (chunk.type === "done") {
                   scannedCount += chunk.scanned ?? 0;
                   setScannedEmails(scannedCount);
@@ -121,10 +126,11 @@ export default function Home() {
       const subsRes = await fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] }));
       const subs: Subscription[] = subsRes.subscriptions ?? [];
 
+      const accDeals = Array.from(accumulated.values());
       stopTimer();
-      setRealDeals([...accumulated]);
+      setRealDeals(accDeals);
       setSubscriptions(subs);
-      setScanResult({ deals: accumulated.length, subs: subs.length, emails: scannedCount });
+      setScanResult({ deals: accDeals.length, subs: subs.length, emails: scannedCount });
 
       if (dealError) {
         setErrorMsg(dealError.message);
@@ -142,7 +148,7 @@ export default function Home() {
           return sum + mo;
         }, 0);
       const msgs: string[] = [];
-      if (accumulated.length > 0) msgs.push(`${accumulated.length} deals found — you're saving smart! 🎟️`);
+      if (accDeals.length > 0) msgs.push(`${accDeals.length} deals found — you're saving smart! 🎟️`);
       if (subs.length > 0) msgs.push(`Found ${subs.length} subscriptions — $${monthlyTotal.toFixed(2)}/month in recurring charges 💰`);
       if (msgs.length > 0) setConfettiMsgs(msgs);
     }
@@ -227,11 +233,12 @@ export default function Home() {
 
   const categoryCounts = useMemo(() => {
     const counts: Partial<Record<Category | "All", number>> = {};
-    const feed = allActive.filter((d) => d.urgency !== "evergreen");
+    let feed = allActive.filter((d) => d.urgency !== "evergreen");
+    if (searchQuery) feed = searchDeals(feed, searchQuery);
     counts["All"] = feed.length;
     feed.forEach((d) => { counts[d.category] = (counts[d.category] || 0) + 1; });
     return counts;
-  }, [allActive]);
+  }, [allActive, searchQuery]);
 
   const filteredDeals = useMemo(() => {
     let deals = allActive.filter((d) => d.urgency !== "evergreen");
