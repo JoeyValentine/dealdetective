@@ -16,6 +16,7 @@ export async function POST() {
 
   try {
     const emails = await fetchBillingEmails(session.accessToken);
+    console.log(`[subscriptions] Fetched ${emails.length} billing emails for ${userId}`);
 
     let newSubs = 0;
     const BATCH = 5;

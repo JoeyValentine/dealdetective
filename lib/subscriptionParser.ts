@@ -72,45 +72,76 @@ Return ONLY a valid JSON array, no other text.`;
   const content = message.content[0];
   if (content.type !== "text") return [];
 
-  try {
-    const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
+  const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 
-    return parsed
-      .filter((raw: Record<string, unknown>) => {
-        if (!raw.serviceName || typeof raw.amount !== "number") return false;
-        if ((raw.amount as number) <= 0 || (raw.amount as number) > 2000) return false;
-        const name = (raw.serviceName as string).toLowerCase();
-        if (EDU_KEYWORDS.some((k) => name.includes(k))) return false;
-        return true;
-      })
-      .map((raw: Record<string, unknown>) => {
-        const serviceName = (raw.serviceName as string) || "Unknown";
-        const frequency = (raw.frequency as SubscriptionFrequency) || "unknown";
-        const lastBilledDate = (raw.lastBilledDate as string | null) || null;
-        return {
-          id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          serviceName,
-          serviceNormalized: serviceName.toLowerCase().replace(/[^a-z0-9]/g, ""),
-          amount: raw.amount as number,
-          currency: (raw.currency as string) || "USD",
-          frequency,
-          category: (raw.category as SubscriptionCategory) || "Other",
-          status: (raw.status as SubscriptionStatus) || "active",
-          lastBilledDate,
-          nextBillingDate: computeNextBillingDate(lastBilledDate, frequency),
-          confidenceScore: (raw.confidenceScore as SubscriptionConfidence) || "medium",
-          sourceEmail: {
-            subject: email.subject,
-            receivedAt: email.receivedAt,
-            senderDomain: email.senderDomain,
-            messageId: email.messageId,
-          },
-          notes: (raw.notes as string) || "",
-        } satisfies Subscription;
-      });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
   } catch {
-    return [];
+    console.error(`[subscriptionParser] JSON.parse failed for "${email.subject}". Raw Claude response:\n${content.text}`);
+    // Regex fallback: extract the first [...] block before giving up
+    const match = content.text.match(/\[[\s\S]*\]/);
+    if (!match) return [];
+    try {
+      parsed = JSON.parse(match[0]);
+      console.log(`[subscriptionParser] Regex fallback succeeded for "${email.subject}"`);
+    } catch {
+      console.error(`[subscriptionParser] Regex fallback also failed for "${email.subject}"`);
+      return [];
+    }
   }
+
+  if (!Array.isArray(parsed)) return [];
+
+  const kept: Record<string, unknown>[] = [];
+  const dropped: string[] = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    const raw = parsed[i] as Record<string, unknown>;
+    if (!raw.serviceName || typeof raw.amount !== "number") {
+      dropped.push(`[${i}] missing serviceName or non-numeric amount (got: ${JSON.stringify({ serviceName: raw.serviceName, amount: raw.amount })})`);
+      continue;
+    }
+    const amount = raw.amount as number;
+    if (amount <= 0 || amount > 2000) {
+      dropped.push(`[${i}] "${raw.serviceName}" amount=${amount} — out of range (must be 0–2000)`);
+      continue;
+    }
+    const name = (raw.serviceName as string).toLowerCase();
+    const eduMatch = EDU_KEYWORDS.find((k) => name.includes(k));
+    if (eduMatch) {
+      dropped.push(`[${i}] "${raw.serviceName}" — matched EDU keyword "${eduMatch}"`);
+      continue;
+    }
+    kept.push(raw);
+  }
+
+  console.log(`[subscriptionParser] "${email.subject.slice(0, 60)}" → candidates=${parsed.length} kept=${kept.length} dropped=${dropped.length}`);
+  if (dropped.length > 0) console.log(`[subscriptionParser] dropped:`, dropped);
+
+  return kept.map((raw) => {
+    const serviceName = (raw.serviceName as string) || "Unknown";
+    const frequency = (raw.frequency as SubscriptionFrequency) || "unknown";
+    const lastBilledDate = (raw.lastBilledDate as string | null) || null;
+    return {
+      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      serviceName,
+      serviceNormalized: serviceName.toLowerCase().replace(/[^a-z0-9]/g, ""),
+      amount: raw.amount as number,
+      currency: (raw.currency as string) || "USD",
+      frequency,
+      category: (raw.category as SubscriptionCategory) || "Other",
+      status: (raw.status as SubscriptionStatus) || "active",
+      lastBilledDate,
+      nextBillingDate: computeNextBillingDate(lastBilledDate, frequency),
+      confidenceScore: (raw.confidenceScore as SubscriptionConfidence) || "medium",
+      sourceEmail: {
+        subject: email.subject,
+        receivedAt: email.receivedAt,
+        senderDomain: email.senderDomain,
+        messageId: email.messageId,
+      },
+      notes: (raw.notes as string) || "",
+    } satisfies Subscription;
+  });
 }
