@@ -10,7 +10,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const PROMO_KEYWORDS = ['%', 'off', 'deal', 'sale', 'promo', 'code', 'coupon', 'discount', 'free', 'bogo', 'save', 'offer', 'expires', 'limited'];
-const MAX_EMAILS = 300;
+const MAX_EMAILS = 1000;
+const MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes
+const PAGE_SIZE = 100;
 const BATCH = 5;
 const PARALLEL = 4;
 
@@ -36,10 +38,11 @@ export async function POST() {
       let totalDeals = 0;
       let pageToken: string | undefined;
       let fastBatchDone = false;
+      const startTime = Date.now();
 
       try {
-        while (totalScanned < MAX_EMAILS) {
-          const { emails, nextPageToken, count } = await fetchPromoEmailsPage(accessToken, pageToken);
+        while (totalScanned < MAX_EMAILS && Date.now() - startTime < MAX_DURATION_MS) {
+          const { emails, nextPageToken, count } = await fetchPromoEmailsPage(accessToken, pageToken, PAGE_SIZE);
           totalScanned += count;
 
           if (count > 0) {
@@ -60,7 +63,8 @@ export async function POST() {
                       .filter((s) => s.length > 0)
                       .map(parseEmailsBatchWithClaude)
                   )
-                ).flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+                ).flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+                  .filter((d) => d.expirationStatus !== "expired");
                 if (fastDeals.length > 0) {
                   addDeals(userId, fastDeals);
                   totalDeals += fastDeals.length;
@@ -81,10 +85,11 @@ export async function POST() {
                   if (r.status === "fulfilled") batchDeals.push(...r.value);
                 }
               }
-              if (batchDeals.length > 0) {
-                addDeals(userId, batchDeals);
-                totalDeals += batchDeals.length;
-                write({ type: "deals", deals: batchDeals, totalFound: totalDeals, scanned: totalScanned });
+              const activeBatch = batchDeals.filter((d) => d.expirationStatus !== "expired");
+              if (activeBatch.length > 0) {
+                addDeals(userId, activeBatch);
+                totalDeals += activeBatch.length;
+                write({ type: "deals", deals: activeBatch, totalFound: totalDeals, scanned: totalScanned });
               }
             } else {
               write({ type: "progress", scanned: totalScanned, totalFound: totalDeals });

@@ -134,7 +134,15 @@ export default function Home() {
     }
   }, [startTimer, stopTimer]);
 
-  const allActive = useMemo(() => realDeals, [realDeals]);
+  const allActive = useMemo(() => {
+    const map = new Map<string, Deal>();
+    for (const d of realDeals) {
+      const key = `${d.retailerNormalized}|${d.discountValue}|${d.promoCode ?? ""}`;
+      const existing = map.get(key);
+      if (!existing || d.qualityScore > existing.qualityScore) map.set(key, d);
+    }
+    return Array.from(map.values());
+  }, [realDeals]);
 
   const stats = useMemo(() => {
     const cats = new Set(realDeals.map((d) => d.category));
