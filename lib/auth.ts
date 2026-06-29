@@ -27,6 +27,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account }) {
+      if (account) {
+        console.log("[JWT callback] initial sign-in, account.refresh_token exists:", !!account?.refresh_token);
+      }
       if (account?.access_token) {
         token.accessToken = account.access_token;
       }
@@ -51,6 +54,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       // Access token expired — try to refresh it
+      let next = token;
       try {
         const response = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
@@ -64,7 +68,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         const refreshed = await response.json() as { access_token?: string; expires_in?: number; refresh_token?: string };
         if (!response.ok) throw refreshed;
-        return {
+        next = {
           ...token,
           accessToken: refreshed.access_token,
           accessTokenExpires: Date.now() + (refreshed.expires_in ?? 3600) * 1000,
@@ -72,8 +76,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       } catch (error) {
         console.error("Failed to refresh access token", error);
-        return { ...token, error: "RefreshAccessTokenError" };
+        next = { ...token, error: "RefreshAccessTokenError" };
       }
+
+      console.log("[JWT callback] token.refreshToken exists:", !!next.refreshToken);
+      console.log("[JWT callback] token.accessToken exists:", !!next.accessToken);
+      console.log("[JWT callback] token.accessTokenExpires:", next.accessTokenExpires);
+      console.log("[JWT callback] Date.now():", Date.now());
+      console.log("[JWT callback] token expired:", Date.now() >= (next.accessTokenExpires as number ?? 0));
+
+      return next;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;
