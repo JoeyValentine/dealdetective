@@ -176,16 +176,9 @@ export async function fetchPromoEmailsPage(
     .filter((r): r is PromiseFulfilledResult<GmailMeta> => r.status === "fulfilled")
     .map((r) => r.value);
 
-  // Filter to promotional-looking subjects
-  const promotional = metas.filter((m) =>
-    PROMO_RE.test(header(m.payload.headers, "Subject"))
-  );
-
-  if (promotional.length === 0) return { emails: [], nextPageToken: list.nextPageToken, count };
-
-  // Fetch full bodies in parallel
+  // Fetch full bodies in parallel — Claude is the filter
   const fullResults = await Promise.allSettled(
-    promotional.map((m) =>
+    metas.map((m) =>
       gmailGet<GmailFull>(`/users/me/messages/${m.id}?format=full`, accessToken)
     )
   );
