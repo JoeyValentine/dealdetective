@@ -54,20 +54,21 @@ export default function Home() {
     setErrorMsg("");
     startTimer();
 
-    try {
-      const dealFetchPromise = fetch("/api/gmail/sync", { method: "POST" });
-      const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
-        .then((r) => r.json())
-        .catch(() => null);
+    const dealFetchPromise = fetch("/api/gmail/sync", { method: "POST" });
+    const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
+      .then((r) => r.json())
+      .catch(() => null);
 
+    const accumulated: Deal[] = [];
+    let scannedCount = 0;
+    let dealError: Error | null = null;
+
+    try {
       const dealRes = await dealFetchPromise;
       if (!dealRes.ok) {
         const err = await dealRes.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error ?? `Sync failed: ${dealRes.status}`);
       }
-
-      const accumulated: Deal[] = [];
-      let scannedCount = 0;
 
       if (dealRes.body) {
         const reader = dealRes.body.getReader();
@@ -94,16 +95,25 @@ export default function Home() {
           }
         }
       }
-
+    } catch (err) {
+      dealError = err instanceof Error ? err : new Error("Deal scan failed");
+    } finally {
+      // Always load subscriptions regardless of deal scan outcome
       await subSyncPromise;
       const subsRes = await fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] }));
       const subs: Subscription[] = subsRes.subscriptions ?? [];
 
       stopTimer();
-      setScanState("done");
-      setScanResult({ deals: accumulated.length, subs: subs.length, emails: scannedCount });
       setRealDeals([...accumulated]);
       setSubscriptions(subs);
+      setScanResult({ deals: accumulated.length, subs: subs.length, emails: scannedCount });
+
+      if (dealError) {
+        setErrorMsg(dealError.message);
+        setScanState("error");
+      } else {
+        setScanState("done");
+      }
 
       const monthlyTotal = subs
         .filter((s) => s.status !== "cancelled")
@@ -117,10 +127,6 @@ export default function Home() {
       if (accumulated.length > 0) msgs.push(`${accumulated.length} deals found — you're saving smart! 🎟️`);
       if (subs.length > 0) msgs.push(`Found ${subs.length} subscriptions — $${monthlyTotal.toFixed(2)}/month in recurring charges 💰`);
       if (msgs.length > 0) setConfettiMsgs(msgs);
-    } catch (err) {
-      stopTimer();
-      setErrorMsg(err instanceof Error ? err.message : "Scan failed");
-      setScanState("error");
     }
   }, [startTimer, stopTimer]);
 
