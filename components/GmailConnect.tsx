@@ -26,19 +26,38 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, sca
   if (status === "loading") return null;
 
   if (!session) {
+    const btnBase = large
+      ? "flex items-center gap-3 text-white text-base font-semibold px-8 py-4 rounded-2xl transition-colors shadow-lg"
+      : "flex items-center gap-2 border text-sm font-medium px-3.5 py-2 rounded-xl transition-colors shadow-[0_1px_4px_rgba(0,0,0,0.08)]";
+
     return (
-      <button
-        onClick={() => signIn("google")}
-        className={large
-          ? "flex items-center gap-3 bg-amber-500 hover:bg-amber-600 text-white text-base font-semibold px-8 py-4 rounded-2xl transition-colors shadow-lg shadow-amber-200/60 dark:shadow-amber-900/40"
-          : "flex items-center gap-2 bg-[var(--card)] border border-[var(--border)] text-[var(--text-1)] text-sm font-medium px-3.5 py-2 rounded-xl hover:bg-[var(--surface)] transition-colors shadow-[0_1px_4px_rgba(0,0,0,0.08)]"
-        }
-      >
-        <Mail size={large ? 20 : 14} className={large ? "text-white" : "text-amber-500"} />
-        Connect Gmail
-      </button>
+      <div className={`flex ${large ? "flex-col items-center" : "items-center"} gap-3`}>
+        <button
+          onClick={() => signIn("google")}
+          className={`${btnBase} ${large
+            ? "bg-amber-500 hover:bg-amber-600 shadow-amber-200/60 dark:shadow-amber-900/40"
+            : "bg-[var(--card)] border-[var(--border)] text-[var(--text-1)] hover:bg-[var(--surface)]"
+          }`}
+        >
+          <Mail size={large ? 20 : 14} className={large ? "text-white" : "text-amber-500"} />
+          Connect Gmail
+        </button>
+        <button
+          onClick={() => signIn("microsoft-entra-id")}
+          className={`${btnBase} ${large
+            ? "bg-blue-600 hover:bg-blue-700 shadow-blue-200/60 dark:shadow-blue-900/40"
+            : "bg-[var(--card)] border-[var(--border)] text-[var(--text-1)] hover:bg-[var(--surface)]"
+          }`}
+        >
+          <Mail size={large ? 20 : 14} className={large ? "text-white" : "text-blue-500"} />
+          Connect Outlook
+        </button>
+      </div>
     );
   }
+
+  const isOutlook = session.provider === "microsoft-entra-id";
+  const providerLabel = isOutlook ? "Outlook" : "Gmail";
 
   const scanLabel = foundCount > 0
     ? `${foundCount} deals found${scannedEmails ? ` across ${scannedEmails} emails` : ""} · ${formatElapsed(elapsed)}`
@@ -51,7 +70,7 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, sca
         <span className="text-base font-medium">{scanLabel}</span>
       </div>
       <p className="text-sm text-[var(--text-3)]">
-        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · scanning all pages"}
+        {foundCount > 0 ? "Adding to your feed…" : `${providerLabel} + Bills · scanning all pages`}
       </p>
       <div className="relative w-48 h-1.5 bg-[var(--surface)] rounded-full overflow-hidden mt-1">
         <div className="scanning-bar rounded-full" />
@@ -64,7 +83,7 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, sca
         <span className="hidden sm:inline">{scanLabel}</span>
       </div>
       <span className="text-xs text-[var(--text-3)] hidden sm:inline">
-        {foundCount > 0 ? "Adding to your feed…" : "Deals + Bills · scanning all pages"}
+        {foundCount > 0 ? "Adding to your feed…" : `${providerLabel} + Bills · scanning all pages`}
       </span>
       <div className="relative w-32 h-1 bg-[var(--surface)] rounded-full overflow-hidden hidden sm:block">
         <div className="scanning-bar rounded-full" />
@@ -93,14 +112,18 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, sca
         <button
           onClick={onScan}
           className={large
-            ? "flex items-center gap-3 bg-amber-500 hover:bg-amber-600 text-white text-base font-semibold px-8 py-4 rounded-2xl transition-colors shadow-lg shadow-amber-200/60 dark:shadow-amber-900/40"
+            ? `flex items-center gap-3 text-white text-base font-semibold px-8 py-4 rounded-2xl transition-colors shadow-lg ${
+                isOutlook
+                  ? "bg-blue-600 hover:bg-blue-700 shadow-blue-200/60 dark:shadow-blue-900/40"
+                  : "bg-amber-500 hover:bg-amber-600 shadow-amber-200/60 dark:shadow-amber-900/40"
+              }`
             : "flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200/60 dark:border-amber-700/40 text-amber-700 dark:text-amber-400 text-xs font-medium px-3 py-1.5 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
           }
           title={`Signed in as ${session.user?.email}`}
         >
           {scanState === "done"
-            ? <><RefreshCw size={large ? 18 : 12} /> Rescan</>
-            : <><Mail size={large ? 20 : 12} /> Scan Gmail</>
+            ? <><RefreshCw size={large ? 18 : 12} /> Rescan {large ? providerLabel : ""}</>
+            : <><Mail size={large ? 20 : 12} /> Scan {providerLabel}</>
           }
         </button>
       )}
@@ -112,7 +135,7 @@ export default function GmailConnect({ large, scanState, onScan, foundCount, sca
             signOut();
           }}
           className="p-1.5 text-[var(--text-3)] hover:text-[var(--text-2)] rounded-lg hover:bg-[var(--surface)] transition-colors"
-          title="Disconnect Gmail"
+          title="Disconnect"
         >
           <LogOut size={13} />
         </button>

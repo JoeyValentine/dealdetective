@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -14,16 +15,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    MicrosoftEntraId({
+      clientId: process.env.MICROSOFT_CLIENT_ID!,
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: "openid profile email Mail.Read User.Read offline_access",
+        },
+      },
+    }),
   ],
   callbacks: {
     async jwt({ token, account }) {
       if (account?.access_token) {
         token.accessToken = account.access_token;
       }
+      if (account?.provider) {
+        token.provider = account.provider;
+      }
       return token;
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string | undefined;
+      session.provider = token.provider as string | undefined;
       return session;
     },
   },

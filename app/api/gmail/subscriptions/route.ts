@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchBillingEmails } from "@/lib/gmailFetcher";
+import { fetchOutlookBillingEmails } from "@/lib/outlookFetcher";
 import { parseSubscriptionWithClaude } from "@/lib/subscriptionParser";
 import { addSubscriptions, getSubscriptions, getSubscriptionCount } from "@/lib/subscriptionStore";
 
@@ -15,7 +16,8 @@ export async function POST() {
   }
 
   try {
-    const emails = await fetchBillingEmails(session.accessToken);
+    const isOutlook = session.provider === "microsoft-entra-id";
+    const emails = await (isOutlook ? fetchOutlookBillingEmails : fetchBillingEmails)(session.accessToken);
     console.log(`[subscriptions] Fetched ${emails.length} billing emails for ${userId}`);
 
     let newSubs = 0;

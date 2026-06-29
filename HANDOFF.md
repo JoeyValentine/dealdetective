@@ -16,6 +16,7 @@ DealDetective is an AI-powered promotional email analyzer and subscription track
 ### Done
 - Full Next.js 16.2.9 App Router app with TypeScript + Tailwind CSS v4
 - Google OAuth via next-auth v5 (beta) with `gmail.readonly` scope
+- **Microsoft Outlook OAuth** via next-auth MicrosoftEntraId provider with `Mail.Read` scope; both sign-in options on the connect screen; provider stored in JWT/session so backend routes automatically use Microsoft Graph API instead of Gmail API
 - **Streaming Gmail scan**: promo emails fetched in pages of 25 (up to 300 total), Claude batches of 5 run 4-at-a-time in parallel, results stream to the frontend as NDJSON — deals appear in the feed live as they're parsed
 - Billing email scan: up to 1000 emails for subscription detection
 - Claude AI deal parser — extracts retailer, offer, promo code, expiry, category, notes, Gmail messageId
@@ -74,10 +75,11 @@ app/
       subscriptions/route.ts       — POST: fetch + parse billing emails; GET: return stored subs
 
 lib/
-  auth.ts                          — next-auth config: Google provider, gmail.readonly scope, accessToken in JWT
+  auth.ts                          — next-auth config: Google + MicrosoftEntraId providers; provider stored in JWT + session
   parser.ts                        — parseEmailWithClaude() + computeEffectivePercent()
   subscriptionParser.ts            — parseSubscriptionWithClaude() + computeNextBillingDate()
   gmailFetcher.ts                  — fetchPromoEmails() (category:promotions) + fetchBillingEmails() (subject keywords)
+  outlookFetcher.ts                — fetchOutlookPromoPage() + fetchOutlookBillingEmails() (Microsoft Graph API)
   dealStore.ts                     — globalThis singleton Map<string, Deal>
   subscriptionStore.ts             — globalThis singleton Map<string, Subscription>
   ranker.ts                        — rankDeals(), searchDeals(), getExpiryCountdown()
@@ -111,9 +113,18 @@ components/
 ANTHROPIC_API_KEY=sk-ant-...          # Get from console.anthropic.com — no leading space
 GOOGLE_CLIENT_ID=...                  # From Google Cloud Console — project: dealdetective-500518
 GOOGLE_CLIENT_SECRET=...              # From Google Cloud Console
+MICROSOFT_CLIENT_ID=...              # From Azure Portal — App registrations
+MICROSOFT_CLIENT_SECRET=...          # From Azure Portal — client secret value (not ID)
 NEXTAUTH_SECRET=...                   # openssl rand -base64 32
 NEXTAUTH_URL=http://localhost:3001    # match whatever port the dev server runs on
 ```
+
+**Azure setup for Outlook:**
+1. Go to portal.azure.com → Azure Active Directory → App registrations → New registration
+2. Name: DealDetective, Supported account types: "Accounts in any organizational directory and personal Microsoft accounts"
+3. Redirect URI: Web → `http://localhost:3001/api/auth/callback/microsoft-entra-id`
+4. After creation: API permissions → Add → Microsoft Graph → Delegated → `Mail.Read`, `User.Read`, `email`, `openid`, `profile`, `offline_access`
+5. Certificates & secrets → New client secret → copy the Value (not the ID) into `MICROSOFT_CLIENT_SECRET`
 
 ---
 

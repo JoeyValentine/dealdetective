@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { fetchPromoEmailsPage } from "@/lib/gmailFetcher";
+import { fetchOutlookPromoPage } from "@/lib/outlookFetcher";
 import { parseEmailsBatchWithClaude } from "@/lib/parser";
 import type { Deal } from "@/types/deal";
 import { addDeals, getStoreCount, clearStore } from "@/lib/dealStore";
@@ -30,6 +31,9 @@ export async function POST(request: Request) {
     clearStore(userId);
   }
 
+  const isOutlook = session.provider === "microsoft-entra-id";
+  const fetchPage = isOutlook ? fetchOutlookPromoPage : fetchPromoEmailsPage;
+
   const encoder = new TextEncoder();
   const accessToken = session.accessToken;
 
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
       let totalDeals = 0;
 
       try {
-        const { emails, nextPageToken, count } = await fetchPromoEmailsPage(accessToken, incomingPageToken, PAGE_SIZE);
+        const { emails, nextPageToken, count } = await fetchPage(accessToken, incomingPageToken, PAGE_SIZE);
 
         if (count > 0) {
           const filtered = emails.filter((e) => {
