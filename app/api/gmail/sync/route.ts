@@ -10,7 +10,30 @@ import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const PROMO_KEYWORDS = ['%', 'off', 'deal', 'sale', 'promo', 'code', 'coupon', 'discount', 'free', 'bogo', 'save', 'offer', 'expires', 'limited'];
+const PROMO_KEYWORDS = [
+  // Discounts
+  '% off', 'percent off', 'discount', 'sale', 'clearance', 'markdown',
+  // Deals
+  'deal', 'offer', 'promo', 'promotion', 'special', 'exclusive',
+  // Codes
+  'code', 'coupon', 'voucher', 'redeem', 'use code', 'promo code',
+  // Savings
+  'save', 'saving', 'savings', 'cheap', 'low price', 'best price',
+  // Free
+  'free', 'bogo', 'buy one', 'complimentary', 'on us',
+  // Urgency
+  'expires', 'expiring', 'limited time', 'today only', 'ends soon',
+  'last chance', 'dont miss', "don't miss", 'hurry', 'flash sale',
+  // Shopping
+  'shop', 'buy', 'order', 'purchase', 'checkout',
+  // Money
+  '$', '£', '€', 'price', 'cost', 'value', 'worth',
+  // Marketing
+  'new arrival', 'just launched', 'back in stock', 'selling fast',
+  'members only', 'vip', 'loyalty', 'reward', 'points',
+  // Generic promo
+  'unlock', 'activate', 'claim', 'grab', 'get yours', 'available now',
+];
 const PAGE_SIZE = 100;
 const BATCH = 5;
 const PARALLEL = 4;
@@ -49,7 +72,7 @@ export async function POST(request: Request) {
 
         if (count > 0) {
           const filtered = emails.filter((e) => {
-            const text = (e.subject + " " + e.body.slice(0, 500)).toLowerCase();
+            const text = (e.subject + " " + e.body.slice(0, 1000)).toLowerCase();
             return PROMO_KEYWORDS.some((k) => text.includes(k));
           });
 
