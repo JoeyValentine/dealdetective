@@ -230,6 +230,7 @@ Return ONLY a valid JSON array, no other text.`;
 
   const content = message.content[0];
   if (content.type !== "text") return [];
+  console.log(`[claude] raw response (first 200): ${content.text.slice(0, 200)}`);
 
   try {
     const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();

@@ -50,6 +50,7 @@ export async function POST(request: Request) {
         if (count > 0) {
           // Fast first batch: first 10 emails as 2 parallel Claude calls so deals appear quickly
           const fast = emails.splice(0, BATCH * 2);
+          console.log(`[sync] ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ? "set" : "MISSING"} — sending ${fast.length} emails to Claude (fast batch), ${emails.length} remaining`);
           const fastDeals = (
             await Promise.allSettled(
               [fast.slice(0, BATCH), fast.slice(BATCH)]
