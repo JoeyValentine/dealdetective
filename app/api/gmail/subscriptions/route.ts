@@ -32,13 +32,13 @@ export async function POST() {
       );
       for (const r of results) {
         if (r.status === "fulfilled" && r.value.length > 0) {
-          addSubscriptions(userId, r.value);
+          await addSubscriptions(userId, r.value);
           newSubs += r.value.length;
         }
       }
     }
 
-    const totalStored = getSubscriptionCount(userId);
+    const totalStored = await getSubscriptionCount(userId);
     console.log(`[/api/gmail/subscriptions] user=${userId} scanned=${emails.length} newSubs=${newSubs} storeSize=${totalStored}`);
     return NextResponse.json({ scanned: emails.length, newSubs, totalStored });
   } catch (err) {
@@ -53,6 +53,6 @@ export async function GET() {
   const userId = session?.user?.email;
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const subs = getSubscriptions(userId);
+  const subs = await getSubscriptions(userId);
   return NextResponse.json({ subscriptions: subs, count: subs.length });
 }

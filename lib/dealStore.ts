@@ -1,39 +1,31 @@
 import { Deal } from "@/types/deal";
-
-// ponytail: outer Map keyed by userId — scoped so users never see each other's deals
-// resets on process restart — add DB when persistence matters
-const g = globalThis as typeof globalThis & { __dealStore?: Map<string, Map<string, Deal>> };
-if (!g.__dealStore) g.__dealStore = new Map();
-const root = g.__dealStore;
-
-function userStore(userId: string): Map<string, Deal> {
-  if (!root.has(userId)) root.set(userId, new Map());
-  return root.get(userId)!;
-}
+import { db } from "@/lib/db";
 
 function dedupKey(d: Deal): string {
   return `${d.retailerNormalized}:${d.promoCode ?? ""}:${d.discountValue}:${d.offerType}`;
 }
 
-export function addDeals(userId: string, deals: Deal[]): void {
-  const store = userStore(userId);
-  for (const deal of deals) {
-    const key = dedupKey(deal);
-    const existing = store.get(key);
-    if (!existing || deal.sourceEmail.receivedAt > existing.sourceEmail.receivedAt) {
-      store.set(key, deal);
-    }
-  }
+export async function addDeals(userId: string, deals: Deal[]): Promise<void> {
+  if (deals.length === 0) return;
+  const rows = deals.map((d) => ({
+    user_id: userId,
+    dedup_key: dedupKey(d),
+    data: d,
+    updated_at: new Date().toISOString(),
+  }));
+  await db.from("deals").upsert(rows, { onConflict: "user_id,dedup_key" });
 }
 
-export function getRealDeals(userId: string): Deal[] {
-  return Array.from(userStore(userId).values());
+export async function getRealDeals(userId: string): Promise<Deal[]> {
+  const { data } = await db.from("deals").select("data").eq("user_id", userId);
+  return (data ?? []).map((row: { data: Deal }) => row.data);
 }
 
-export function getStoreCount(userId: string): number {
-  return userStore(userId).size;
+export async function getStoreCount(userId: string): Promise<number> {
+  const { count } = await db.from("deals").select("*", { count: "exact", head: true }).eq("user_id", userId);
+  return count ?? 0;
 }
 
-export function clearStore(userId: string): void {
-  root.delete(userId);
+export async function clearStore(userId: string): Promise<void> {
+  await db.from("deals").delete().eq("user_id", userId);
 }

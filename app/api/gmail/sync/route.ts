@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   // Clear store only on the first chunk so subsequent chunks append
   if (!incomingPageToken) {
-    clearStore(userId);
+    await clearStore(userId);
   }
 
   const isOutlook = session.provider === "microsoft-entra-id";
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           ).flatMap((r) => (r.status === "fulfilled" ? r.value : []))
             .filter((d) => d.expirationStatus !== "expired");
           if (fastDeals.length > 0) {
-            addDeals(userId, fastDeals);
+            await addDeals(userId, fastDeals);
             totalDeals += fastDeals.length;
             write({ type: "deals", deals: fastDeals, totalFound: totalDeals, scanned: count });
           }
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
           }
           const activeBatch = batchDeals.filter((d) => d.expirationStatus !== "expired");
           if (activeBatch.length > 0) {
-            addDeals(userId, activeBatch);
+            await addDeals(userId, activeBatch);
             totalDeals += activeBatch.length;
             write({ type: "deals", deals: activeBatch, totalFound: totalDeals, scanned: count });
           }
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
           type: "done",
           scanned: count,
           totalFound: totalDeals,
-          totalStored: getStoreCount(userId),
+          totalStored: await getStoreCount(userId),
           nextPageToken: nextPageToken ?? null,
         });
       } catch (err) {
@@ -115,7 +115,7 @@ export async function DELETE() {
   const userId = session?.user?.email;
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  clearStore(userId);
-  clearSubscriptionStore(userId);
+  await clearStore(userId);
+  await clearSubscriptionStore(userId);
   return NextResponse.json({ ok: true });
 }
