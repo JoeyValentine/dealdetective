@@ -1,11 +1,13 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // ponytail: singleton — same reason as globalThis stores (Turbopack re-imports modules between requests)
-const g = globalThis as typeof globalThis & { __supabase?: SupabaseClient };
-if (!g.__supabase) {
+// Use "in" check so null (no env vars) doesn't re-trigger initialization on each import
+const g = globalThis as typeof globalThis & { __supabase?: SupabaseClient | null };
+if (!("__supabase" in g)) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env.local");
-  g.__supabase = createClient(url, key, { auth: { persistSession: false } });
+  g.__supabase = url && key
+    ? createClient(url, key, { auth: { persistSession: false } })
+    : null;
 }
-export const db = g.__supabase;
+export const db: SupabaseClient | null = g.__supabase ?? null;
