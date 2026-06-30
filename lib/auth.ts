@@ -14,6 +14,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           prompt: "consent",
         },
       },
+      checks: ["state"],
     }),
     ...(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET
       ? [MicrosoftEntraId({
