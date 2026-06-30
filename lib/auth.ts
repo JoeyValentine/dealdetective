@@ -15,15 +15,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
-    MicrosoftEntraId({
-      clientId: process.env.MICROSOFT_CLIENT_ID!,
-      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: "openid profile email Mail.Read User.Read offline_access",
-        },
-      },
-    }),
+    ...(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET
+      ? [MicrosoftEntraId({
+          clientId: process.env.MICROSOFT_CLIENT_ID,
+          clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+          authorization: {
+            params: {
+              scope: "openid profile email Mail.Read User.Read offline_access",
+            },
+          },
+        })]
+      : []),
   ],
   callbacks: {
     async jwt({ token, account }) {
