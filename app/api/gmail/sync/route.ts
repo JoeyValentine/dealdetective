@@ -38,8 +38,10 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const write = (obj: object) =>
+      const write = (obj: object) => {
+        console.log(`[sync] writing to stream: ${JSON.stringify(obj).slice(0, 100)}`);
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      };
 
       let totalDeals = 0;
 
@@ -57,12 +59,13 @@ export async function POST(request: Request) {
                 .filter((s) => s.length > 0)
                 .map(parseEmailsBatchWithClaude)
             )
-          ).flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-            .filter((d) => d.expirationStatus !== "expired");
-          if (fastDeals.length > 0) {
-            await addDeals(userId, fastDeals);
-            totalDeals += fastDeals.length;
-            write({ type: "deals", deals: fastDeals, totalFound: totalDeals, scanned: count });
+          ).flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+          console.log(`[sync] Claude returned ${fastDeals.length} deals from fast batch`);
+          const fastActive = fastDeals.filter((d) => d.expirationStatus !== "expired");
+          if (fastActive.length > 0) {
+            await addDeals(userId, fastActive);
+            totalDeals += fastActive.length;
+            write({ type: "deals", deals: fastActive, totalFound: totalDeals, scanned: count });
           }
 
           // Remaining: parallel groups of 4 batches of 5
@@ -78,6 +81,7 @@ export async function POST(request: Request) {
               if (r.status === "fulfilled") batchDeals.push(...r.value);
             }
           }
+          console.log(`[sync] Claude returned ${batchDeals.length} deals from remaining batches`);
           const activeBatch = batchDeals.filter((d) => d.expirationStatus !== "expired");
           if (activeBatch.length > 0) {
             await addDeals(userId, activeBatch);
