@@ -233,7 +233,6 @@ Return ONLY a valid JSON array, no other text.`;
     console.error("[claude] unexpected content type:", content.type, JSON.stringify(content));
     return [];
   }
-  console.log(`[claude] raw response (first 200): ${content.text.slice(0, 200)}`);
 
   const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   try {

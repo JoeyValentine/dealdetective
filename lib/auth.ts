@@ -29,9 +29,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account }) {
-      if (account) {
-        console.log("[JWT callback] initial sign-in, account.refresh_token exists:", !!account?.refresh_token);
-      }
       if (account?.access_token) {
         token.accessToken = account.access_token;
       }
@@ -80,12 +77,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         console.error("Failed to refresh access token", error);
         next = { ...token, error: "RefreshAccessTokenError" };
       }
-
-      console.log("[JWT callback] token.refreshToken exists:", !!next.refreshToken);
-      console.log("[JWT callback] token.accessToken exists:", !!next.accessToken);
-      console.log("[JWT callback] token.accessTokenExpires:", next.accessTokenExpires);
-      console.log("[JWT callback] Date.now():", Date.now());
-      console.log("[JWT callback] token expired:", Date.now() >= (next.accessTokenExpires as number ?? 0));
 
       return next;
     },
