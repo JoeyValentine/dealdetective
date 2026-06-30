@@ -229,18 +229,23 @@ Return ONLY a valid JSON array, no other text.`;
   });
 
   const content = message.content[0];
-  if (content.type !== "text") return [];
+  if (content.type !== "text") {
+    console.error("[claude] unexpected content type:", content.type, JSON.stringify(content));
+    return [];
+  }
   console.log(`[claude] raw response (first 200): ${content.text.slice(0, 200)}`);
 
+  const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   try {
-    const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
     return parsed.map((raw: Record<string, unknown>) => {
       const idx = Math.max(0, Math.min(((raw.emailIndex as number) || 1) - 1, emails.length - 1));
       return mapRawToDeal(raw, emails[idx]);
     });
-  } catch {
+  } catch (err) {
+    console.error("[claude] JSON parse failed:", err instanceof Error ? err.message : err,
+      "| text length:", json.length, "| first 1500:", json.slice(0, 1500));
     return [];
   }
 }
