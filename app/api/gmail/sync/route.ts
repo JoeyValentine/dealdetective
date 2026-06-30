@@ -10,7 +10,7 @@ import { clearSubscriptionStore } from "@/lib/subscriptionStore";
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 const BATCH = 5;
 const PARALLEL = 4;
 
@@ -45,6 +45,7 @@ export async function POST(request: Request) {
 
       try {
         const { emails, nextPageToken, count } = await fetchPage(accessToken, incomingPageToken, PAGE_SIZE);
+        console.log(`[sync] listed=${count} bodies_fetched=${emails.length} pageToken=${!!incomingPageToken}`);
 
         if (count > 0) {
           // Fast first batch: first 10 emails as 2 parallel Claude calls so deals appear quickly

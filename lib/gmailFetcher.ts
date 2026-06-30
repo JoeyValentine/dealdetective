@@ -163,25 +163,14 @@ export async function fetchPromoEmailsPage(
 
   if (count === 0) return { emails: [], nextPageToken: list.nextPageToken, count: 0 };
 
-  // Fetch metadata in parallel
-  const metaResults = await Promise.allSettled(
-    ids.map((m) =>
-      gmailGet<GmailMeta>(
-        `/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
-        accessToken
-      )
-    )
-  );
-  const metas = metaResults
-    .filter((r): r is PromiseFulfilledResult<GmailMeta> => r.status === "fulfilled")
-    .map((r) => r.value);
-
-  // Fetch full bodies in batches of 20 — 20×5=100 quota units/batch, under Gmail's 250/s limit
-  const FULL_BATCH = 20;
+  // Skip metadata — Subject/From are in format=full anyway, and the old PROMO_RE subject
+  // filter that justified a separate metadata pass has been removed. Go straight to bodies
+  // in batches of 25 (25×5=125 quota units/batch, safely under Gmail's 250/s per-user limit).
+  const FULL_BATCH = 25;
   const emails: RawEmail[] = [];
-  for (let i = 0; i < metas.length; i += FULL_BATCH) {
+  for (let i = 0; i < ids.length; i += FULL_BATCH) {
     const results = await Promise.allSettled(
-      metas.slice(i, i + FULL_BATCH).map((m) =>
+      ids.slice(i, i + FULL_BATCH).map((m) =>
         gmailGet<GmailFull>(`/users/me/messages/${m.id}?format=full`, accessToken)
       )
     );
