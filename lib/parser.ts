@@ -223,11 +223,18 @@ ${DEAL_RULES}
 Return ONLY a valid JSON array, no other text.`;
 
   console.log('[sync][debug] body chars:', emails.map(e => (e.body || '').length));
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    messages: [{ role: "user", content: prompt }],
-  });
+  let message: Awaited<ReturnType<typeof client.messages.create>>;
+  try {
+    message = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+  } catch (err: unknown) {
+    const e = err as { status?: number; message?: string; error?: unknown };
+    console.error('[sync][debug] Claude call failed:', e?.status, e?.message, JSON.stringify(e?.error || err));
+    return [];
+  }
 
   const content = message.content[0];
   const rawText = content.type === "text" ? content.text : "";
