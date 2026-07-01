@@ -222,6 +222,7 @@ ${DEAL_RULES}
 
 Return ONLY a valid JSON array, no other text.`;
 
+  console.log('[sync][debug] body chars:', emails.map(e => (e.body || '').length));
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
@@ -229,6 +230,8 @@ Return ONLY a valid JSON array, no other text.`;
   });
 
   const content = message.content[0];
+  const rawText = content.type === "text" ? content.text : "";
+  console.log('[sync][debug] raw response:', rawText.slice(0, 2000));
   if (content.type !== "text") {
     console.error("[claude] unexpected content type:", content.type, JSON.stringify(content));
     return [];
