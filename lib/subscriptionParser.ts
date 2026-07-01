@@ -65,37 +65,25 @@ Return ONLY a valid JSON array, no other text.`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 1024,
+    max_tokens: 2048,
     messages: [{ role: "user", content: prompt }],
   });
 
   const content = message.content[0];
   if (content.type !== "text") return [];
 
-  const cleanJson = (text: string) =>
-    text
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-
-  const cleaned = cleanJson(content.text);
+  // Strip fences then extract outermost [...] to survive prose before/after JSON
+  const stripped = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const arrStart = stripped.indexOf("[");
+  const arrEnd = stripped.lastIndexOf("]");
+  const json = arrStart !== -1 && arrEnd > arrStart ? stripped.slice(arrStart, arrEnd + 1) : stripped;
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(json);
   } catch {
-    console.error(`[subscriptionParser] JSON.parse failed for "${email.subject}". Raw Claude response:\n${content.text}`);
-    // Regex fallback: find a [...] block in the cleaned text
-    const match = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) return [];
-    try {
-      parsed = JSON.parse(match[0]);
-      console.log(`[subscriptionParser] Regex fallback succeeded for "${email.subject}"`);
-    } catch {
-      console.error(`[subscriptionParser] Regex fallback also failed for "${email.subject}"`);
-      return [];
-    }
+    console.error(`[subscriptionParser] JSON.parse failed for "${email.subject}". Raw:\n${content.text.slice(0, 1000)}`);
+    return [];
   }
 
   if (!Array.isArray(parsed)) return [];

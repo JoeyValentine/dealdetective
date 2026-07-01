@@ -227,7 +227,7 @@ Return ONLY a valid JSON array, no other text.`;
   try {
     message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],
     });
   } catch (err: unknown) {
@@ -244,7 +244,11 @@ Return ONLY a valid JSON array, no other text.`;
     return [];
   }
 
-  const json = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  // Strip fences then extract outermost [...] to survive prose before/after JSON
+  const stripped = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const arrStart = stripped.indexOf("[");
+  const arrEnd = stripped.lastIndexOf("]");
+  const json = arrStart !== -1 && arrEnd > arrStart ? stripped.slice(arrStart, arrEnd + 1) : stripped;
   try {
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
