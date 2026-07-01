@@ -15,7 +15,14 @@ function dedupKey(d: Deal): string {
 export async function addDeals(userId: string, deals: Deal[]): Promise<void> {
   if (deals.length === 0) return;
   if (db) {
-    const rows = deals.map((d) => ({
+    // Deduplicate within the batch by conflict key — Supabase throws if two rows in the
+    // same upsert share the same conflict key ("ON CONFLICT DO UPDATE command cannot affect
+    // row a second time"). Keep the last occurrence so more-recently-parsed data wins.
+    const seen = new Map<string, Deal>();
+    for (const d of deals) seen.set(dedupKey(d), d);
+    if (seen.size < deals.length)
+      console.log(`[addDeals] dropped ${deals.length - seen.size} in-batch duplicate key(s)`);
+    const rows = Array.from(seen.values()).map((d) => ({
       user_id: userId,
       dedup_key: dedupKey(d),
       data: d,

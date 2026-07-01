@@ -72,11 +72,19 @@ Return ONLY a valid JSON array, no other text.`;
   const content = message.content[0];
   if (content.type !== "text") return [];
 
-  // Strip fences then extract outermost [...] to survive prose before/after JSON
-  const stripped = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  const arrStart = stripped.indexOf("[");
-  const arrEnd = stripped.lastIndexOf("]");
-  const json = arrStart !== -1 && arrEnd > arrStart ? stripped.slice(arrStart, arrEnd + 1) : stripped;
+  // If the response contains fenced blocks, take contents of the FIRST one (avoids
+  // merging two separate JSON blocks with prose between them into one broken string).
+  // Fall back to first-[-to-last-] extraction when no fences are present.
+  const fenceMatch = content.text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  let json: string;
+  if (fenceMatch) {
+    json = fenceMatch[1].trim();
+  } else {
+    const t = content.text.trim();
+    const arrStart = t.indexOf("[");
+    const arrEnd = t.lastIndexOf("]");
+    json = arrStart !== -1 && arrEnd > arrStart ? t.slice(arrStart, arrEnd + 1) : t;
+  }
 
   let parsed: unknown;
   try {
