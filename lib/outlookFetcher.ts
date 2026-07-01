@@ -10,6 +10,7 @@ interface GraphMessage {
   receivedDateTime: string;
   from: { emailAddress: { address: string; name: string } };
   body: { content: string; contentType: string };
+  webLink?: string;
 }
 
 interface GraphPage {
@@ -95,4 +96,74 @@ export async function fetchOutlookBillingEmails(
   }
 
   return emails;
+}
+
+// Converts a GraphMessage to RawEmail, capturing webLink for receipt deep-links.
+// Kept separate from toRawEmail so billing/promo paths are unaffected.
+function toRawEmailWithLink(msg: GraphMessage): RawEmail | null {
+  const rawBody = msg.body?.content ?? "";
+  const body = msg.body?.contentType === "html" ? stripHtml(rawBody) : rawBody;
+  if (!body.trim()) return null;
+  const senderEmail = msg.from?.emailAddress?.address ?? "";
+  const senderDomain = senderEmail.split("@")[1] ?? "";
+  return {
+    subject: msg.subject ?? "(no subject)",
+    body: body.slice(0, 8000),
+    receivedAt: msg.receivedDateTime,
+    senderEmail,
+    senderDomain,
+    messageId: msg.id,
+    emailLink: msg.webLink,
+  };
+}
+
+const RECEIPT_SELECT = "$select=id,subject,body,receivedDateTime,from,webLink";
+const RECEIPT_KEYWORDS = ["order", "receipt", "confirmation", "purchase", "invoice"];
+
+export async function fetchOutlookReceiptEmails(
+  accessToken: string,
+  maxFetch = 500
+): Promise<{ emails: RawEmail[]; usedReceiptsFolder: boolean }> {
+  // Try to find a "Receipts" folder by displayName
+  const foldersRes = await graphGet<{ value: { id: string; displayName: string }[] }>(
+    `${GRAPH_API}/me/mailFolders?$select=id,displayName&$top=100`,
+    accessToken
+  );
+  const receiptsFolder = (foldersRes.value ?? []).find(
+    (f) => f.displayName.toLowerCase() === "receipts"
+  );
+
+  if (receiptsFolder) {
+    console.log(`[outlookFetcher] Found Receipts folder id=${receiptsFolder.id} — fetching all messages`);
+    const emails: RawEmail[] = [];
+    let pageUrl: string | undefined =
+      `${GRAPH_API}/me/mailFolders/${receiptsFolder.id}/messages?${RECEIPT_SELECT}&$orderby=receivedDateTime desc&$top=100`;
+    while (pageUrl && emails.length < maxFetch) {
+      const page: GraphPage = await graphGet<GraphPage>(pageUrl, accessToken);
+      for (const msg of page.value ?? []) {
+        const email = toRawEmailWithLink(msg);
+        if (email) emails.push(email);
+      }
+      pageUrl = page["@odata.nextLink"];
+    }
+    return { emails, usedReceiptsFolder: true };
+  }
+
+  // Fallback: scan Inbox with keyword subject filter
+  console.log(`[outlookFetcher] No Receipts folder — falling back to Inbox keyword filter`);
+  const emails: RawEmail[] = [];
+  let pageUrl: string | undefined =
+    `${GRAPH_API}/me/mailFolders/Inbox/messages?${RECEIPT_SELECT}&$orderby=receivedDateTime desc&$top=100`;
+  while (pageUrl && emails.length < maxFetch) {
+    const page: GraphPage = await graphGet<GraphPage>(pageUrl, accessToken);
+    for (const msg of page.value ?? []) {
+      const subjectLower = (msg.subject ?? "").toLowerCase();
+      if (RECEIPT_KEYWORDS.some((k) => subjectLower.includes(k))) {
+        const email = toRawEmailWithLink(msg);
+        if (email) emails.push(email);
+      }
+    }
+    pageUrl = page["@odata.nextLink"];
+  }
+  return { emails, usedReceiptsFolder: false };
 }

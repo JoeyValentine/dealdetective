@@ -80,6 +80,55 @@ async function gmailGet<T>(path: string, token: string): Promise<T> {
 
 const BILLING_QUERY = "subject:(invoice OR receipt OR billing OR subscription OR renewal OR payment OR statement)";
 
+function receiptQuery(): string {
+  const since = new Date();
+  since.setFullYear(since.getFullYear() - 1);
+  const d = `${since.getFullYear()}/${String(since.getMonth() + 1).padStart(2, "0")}/${String(since.getDate()).padStart(2, "0")}`;
+  return `subject:(order OR receipt OR confirmation OR purchase OR invoice) after:${d}`;
+}
+
+export async function fetchReceiptEmails(
+  accessToken: string,
+  maxFetch = 500
+): Promise<RawEmail[]> {
+  const list = await gmailGet<{ messages?: { id: string }[] }>(
+    `/users/me/messages?q=${encodeURIComponent(receiptQuery())}&maxResults=${maxFetch}`,
+    accessToken
+  );
+  const ids = list.messages ?? [];
+
+  const FULL_BATCH = 25;
+  const emails: RawEmail[] = [];
+  for (let i = 0; i < ids.length; i += FULL_BATCH) {
+    const results = await Promise.allSettled(
+      ids.slice(i, i + FULL_BATCH).map((m) =>
+        gmailGet<GmailFull>(`/users/me/messages/${m.id}?format=full`, accessToken)
+      )
+    );
+    for (const r of results) {
+      if (r.status !== "fulfilled") continue;
+      const msg = r.value;
+      const subject = header(msg.payload.headers, "Subject");
+      const from = header(msg.payload.headers, "From");
+      const body = extractBody(msg.payload);
+      if (!body.trim()) continue;
+      const senderEmail = from.match(/<([^>]+)>/)?.[1] ?? from;
+      const senderDomain = senderEmail.split("@")[1] ?? "";
+      emails.push({
+        subject,
+        body: body.slice(0, 8000),
+        receivedAt: new Date(parseInt(msg.internalDate)).toISOString(),
+        senderEmail,
+        senderDomain,
+        messageId: msg.id,
+        emailLink: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`,
+      });
+    }
+  }
+
+  return emails;
+}
+
 export async function fetchBillingEmails(
   accessToken: string,
   maxFetch = 500

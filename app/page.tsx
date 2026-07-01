@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { rankDeals, searchDeals } from "@/lib/ranker";
 import { Category, Deal } from "@/types/deal";
 import { Subscription } from "@/types/subscription";
+import { Receipt } from "@/types/receipt";
 import DealCard from "@/components/DealCard";
 import TopSteals from "@/components/TopSteals";
 import CategoryTabs from "@/components/CategoryTabs";
@@ -13,9 +14,10 @@ import GmailConnect from "@/components/GmailConnect";
 import ThemeToggle from "@/components/ThemeToggle";
 import Confetti from "@/components/Confetti";
 import SubscriptionSidebar from "@/components/SubscriptionSidebar";
-import { Bell, Radar, ChevronDown, ChevronUp, Package, Sparkles, CreditCard, AlertTriangle } from "lucide-react";
+import ReceiptSidebar from "@/components/ReceiptSidebar";
+import { Bell, Radar, ChevronDown, ChevronUp, Package, Sparkles, CreditCard, AlertTriangle, ShoppingBag } from "lucide-react";
 
-type MobileTab = "deals" | "bills";
+type MobileTab = "deals" | "bills" | "receipts";
 type ScanState = "idle" | "scanning" | "done" | "error";
 
 export default function Home() {
@@ -26,6 +28,7 @@ export default function Home() {
   const [minDiscount, setMinDiscount] = useState(0);
   const [realDeals, setRealDeals] = useState<Deal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [confettiMsgs, setConfettiMsgs] = useState<string[] | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("deals");
   const [showBellDropdown, setShowBellDropdown] = useState(false);
@@ -59,8 +62,11 @@ export default function Home() {
     setErrorMsg("");
     startTimer();
 
-    // Subscription scan fires once in parallel with the first chunk
+    // Subscription and receipt scans fire once in parallel with the first chunk
     const subSyncPromise = fetch("/api/gmail/subscriptions", { method: "POST" })
+      .then((r) => r.json())
+      .catch(() => null);
+    const receiptSyncPromise = fetch("/api/receipts", { method: "POST" })
       .then((r) => r.json())
       .catch(() => null);
 
@@ -121,15 +127,20 @@ export default function Home() {
       dealError = err instanceof Error ? err : new Error("Deal scan failed");
     } finally {
       scanningRef.current = false;
-      // Always load subscriptions regardless of deal scan outcome
-      await subSyncPromise;
-      const subsRes = await fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] }));
+      // Always load subscriptions and receipts regardless of deal scan outcome
+      await Promise.all([subSyncPromise, receiptSyncPromise]);
+      const [subsRes, rcptsRes] = await Promise.all([
+        fetch("/api/gmail/subscriptions").then((r) => r.json()).catch(() => ({ subscriptions: [] })),
+        fetch("/api/receipts").then((r) => r.json()).catch(() => ({ receipts: [] })),
+      ]);
       const subs: Subscription[] = subsRes.subscriptions ?? [];
+      const rcpts: Receipt[] = rcptsRes.receipts ?? [];
 
       const accDeals = Array.from(accumulated.values());
       stopTimer();
       setRealDeals(accDeals);
       setSubscriptions(subs);
+      setReceipts(rcpts);
       setScanResult({ deals: accDeals.length, subs: subs.length, emails: scannedCount });
 
       if (dealError) {
@@ -147,9 +158,11 @@ export default function Home() {
             : s.amount;
           return sum + mo;
         }, 0);
+      const rcptTotal = rcpts.reduce((sum, r) => sum + r.amount, 0);
       const msgs: string[] = [];
       if (accDeals.length > 0) msgs.push(`${accDeals.length} deals found — you're saving smart! 🎟️`);
       if (subs.length > 0) msgs.push(`Found ${subs.length} subscriptions — $${monthlyTotal.toFixed(2)}/month in recurring charges 💰`);
+      if (rcpts.length > 0) msgs.push(`Found ${rcpts.length} receipts — $${rcptTotal.toFixed(2)} spent in the last 12 months 🧾`);
       if (msgs.length > 0) setConfettiMsgs(msgs);
     }
   }, [startTimer, stopTimer]);
@@ -497,10 +510,18 @@ export default function Home() {
           <SubscriptionSidebar subscriptions={subscriptions} />
         </aside>
 
-        {/* Right main content */}
+        {/* Center main content */}
         <main className="flex-1 min-w-0 px-6 py-6">
           {realDeals.length === 0 ? HeroEmpty : DealsContent}
         </main>
+
+        {/* Right: Receipts sidebar */}
+        <aside
+          className="w-[300px] xl:w-[320px] shrink-0 border-l border-[var(--border)] sticky top-[57px] overflow-y-auto scrollbar-hide"
+          style={{ height: "calc(100vh - 57px)" }}
+        >
+          <ReceiptSidebar receipts={receipts} />
+        </aside>
       </div>
 
       {/* ── Mobile: tab-based layout ── */}
@@ -511,6 +532,11 @@ export default function Home() {
         {mobileTab === "bills" && (
           <div className="h-[calc(100vh-57px-64px)] overflow-y-auto">
             <SubscriptionSidebar subscriptions={subscriptions} />
+          </div>
+        )}
+        {mobileTab === "receipts" && (
+          <div className="h-[calc(100vh-57px-64px)] overflow-y-auto">
+            <ReceiptSidebar receipts={receipts} />
           </div>
         )}
       </div>
@@ -546,6 +572,20 @@ export default function Home() {
             {subscriptions.length > 0 && (
               <span className={`text-[10px] leading-none ${mobileTab === "bills" ? "text-amber-500" : "text-[var(--text-3)]"}`}>
                 {subscriptions.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setMobileTab("receipts")}
+            className={`flex-1 flex flex-col items-center py-3 gap-1 text-xs font-medium transition-colors ${
+              mobileTab === "receipts" ? "text-amber-500" : "text-[var(--text-3)]"
+            }`}
+          >
+            <ShoppingBag size={20} />
+            Receipts
+            {receipts.length > 0 && (
+              <span className={`text-[10px] leading-none ${mobileTab === "receipts" ? "text-amber-500" : "text-[var(--text-3)]"}`}>
+                {receipts.length}
               </span>
             )}
           </button>

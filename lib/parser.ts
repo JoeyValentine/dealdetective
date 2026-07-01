@@ -38,6 +38,7 @@ export interface RawEmail {
   senderEmail: string;
   senderDomain: string;
   messageId?: string;
+  emailLink?: string;
 }
 
 function mapRawToDeal(raw: Record<string, unknown>, email: RawEmail): Deal {
